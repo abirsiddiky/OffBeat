@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
+import '../../core/permission_service.dart';
+import '../../data/artwork/artwork_service.dart';
 import '../../data/models/song_model.dart';
+import '../../data/native_media_service.dart';
 import '../../data/repository/music_repository.dart';
 import '../../playback/audio_controller.dart';
 
@@ -133,6 +137,19 @@ class ActionMenuSheet extends ConsumerWidget {
               _showAddToPlaylistDialog(context, ref, song);
             },
           ),
+
+          // Part 2: Feature - "Delete from device" below divider at bottom
+          const Divider(height: 24, thickness: 1),
+          _buildActionItem(
+            icon: Icons.delete_outline_rounded,
+            title: 'Delete from device',
+            textColor: AppColors.red,
+            iconColor: AppColors.red,
+            onTap: () {
+              Navigator.pop(context);
+              _confirmAndDelete(context, ref, song);
+            },
+          ),
         ],
       ),
     );
@@ -212,5 +229,143 @@ class ActionMenuSheet extends ConsumerWidget {
         );
       },
     );
+  }
+
+  /// Confirmation dialog and execution for deleting a song permanently from device.
+  static Future<void> _confirmAndDelete(
+    BuildContext context,
+    WidgetRef ref,
+    SongModel song,
+  ) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dialogBg = isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface;
+    final dialogTitleColor = isDark ? AppColors.white : AppColors.navy;
+    final dialogBodyColor = isDark ? AppColors.white.withValues(alpha: 0.8) : AppColors.navy.withValues(alpha: 0.8);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: dialogBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Delete song?',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 20,
+              color: dialogTitleColor,
+            ),
+          ),
+          content: Text(
+            '"${song.title}" will be permanently deleted from your device. This can\'t be undone.',
+            style: TextStyle(
+              fontSize: 14,
+              color: dialogBodyColor,
+              height: 1.4,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.only(right: 16, bottom: 12),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                Navigator.pop(ctx, true);
+              },
+              child: const Text(
+                'Delete',
+                style: TextStyle(
+                  color: AppColors.red,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    // Cancelled by tapping outside or Cancel button
+    if (confirmed != true) return;
+
+    // Runtime permission check for Android 9 and lower (API <= 28)
+    final sdk = await PermissionService.getSdkInt();
+    if (sdk <= 28) {
+      final status = await Permission.storage.request();
+      if (!status.isGranted && !status.isLimited) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Couldn't delete the song")),
+          );
+        }
+        return;
+      }
+    }
+
+    final mediaStoreId = int.tryParse(song.id);
+    if (mediaStoreId == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't delete the song")),
+        );
+      }
+      return;
+    }
+
+    // Call native Kotlin MethodChannel "offbeat/media" -> deleteAudio
+    final deleteResult = await NativeMediaService.deleteAudio(
+      mediaStoreIds: [mediaStoreId],
+      filePath: song.uri,
+    );
+
+    if (!context.mounted) return;
+
+    if (deleteResult == 'deleted') {
+      // 3a. If current song, skip to next first (or stop and hide mini player if only song);
+      // remove from queue without interrupting other playback
+      final audioHandler = ref.read(audioHandlerProvider);
+      await audioHandler.handleSongDeleted(song.id);
+
+      // 3b. Delete rows from Drift (Favorites, PlaylistSongs, RecentlyPlayed)
+      final repo = ref.read(musicRepositoryProvider);
+      await repo.deleteSongData(song.id);
+
+      // 3c. Delete cached artwork files (<id>_large.jpg, <id>_notif.jpg) and thumb cache entry
+      await ArtworkService.deleteCachedArtwork(song.id);
+
+      // 3d. Remove from in-memory library state directly (no rescan / querySongs)
+      ref.read(cachedScanProvider.notifier).removeSong(song.id);
+
+      // 3e. Finish with SnackBar "Deleted" (no undo)
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Deleted'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else if (deleteResult == 'cancelled') {
+      // User cancelled system prompt: change nothing, show nothing
+    } else {
+      // Error: change nothing, show error SnackBar
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't delete the song")),
+        );
+      }
+    }
   }
 }

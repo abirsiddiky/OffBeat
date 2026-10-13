@@ -76,6 +76,20 @@ class MusicRepository {
     _artistsController.add(result.artists);
   }
 
+  /// Removes a song directly from in-memory cache and re-derives albums & artists in Dart.
+  void removeSongFromCache(String songId) {
+    _cachedSongs = _cachedSongs.where((s) => s.id != songId).toList();
+    _cachedAlbums = scanner.deriveAlbums(_cachedSongs);
+    _cachedArtists = scanner.deriveArtists(_cachedSongs);
+
+    _songsController.add(_cachedSongs);
+    _albumsController.add(_cachedAlbums);
+    _artistsController.add(_cachedArtists);
+  }
+
+  /// Deletes song records from Drift (Favorites, PlaylistSongs, RecentlyPlayed).
+  Future<void> deleteSongData(String songId) => db.deleteSongData(songId);
+
   // Favorites
   Stream<List<SongModel>> watchFavorites() {
     return db.watchFavoriteSongIds().map((ids) {
@@ -177,12 +191,46 @@ final Provider<MusicRepository> musicRepositoryProvider = Provider<MusicReposito
 
 /// In-memory keep-alive provider holding the single-flight library scan result.
 /// Home, Library, Search, Hotlist, Album Detail all read data derived from this cached provider.
-final FutureProvider<ScanResult> cachedScanProvider = FutureProvider<ScanResult>((ref) async {
-  ref.keepAlive();
-  final scanner = ref.watch(musicScannerProvider);
-  final result = await scanner.scan(force: true);
-  ref.read(musicRepositoryProvider).updateFromScan(result);
-  return result;
+class LibraryNotifier extends AsyncNotifier<ScanResult> {
+  @override
+  FutureOr<ScanResult> build() async {
+    ref.keepAlive();
+    final scanner = ref.watch(musicScannerProvider);
+    final result = await scanner.scan(force: true);
+    ref.read(musicRepositoryProvider).updateFromScan(result);
+    return result;
+  }
+
+  /// Updates library state in place from a new scan result.
+  void updateState(ScanResult result) {
+    ref.read(musicRepositoryProvider).updateFromScan(result);
+    state = AsyncData(result);
+  }
+
+  /// Removes a song by ID directly in-memory, re-deriving albums/artists without any querySongs.
+  void removeSong(String songId) {
+    final current = state.value;
+    if (current == null) return;
+
+    final scanner = ref.read(musicScannerProvider);
+    final updatedSongs = current.songs.where((s) => s.id != songId).toList();
+    final updatedAlbums = scanner.deriveAlbums(updatedSongs);
+    final updatedArtists = scanner.deriveArtists(updatedSongs);
+
+    final newResult = ScanResult(
+      songs: updatedSongs,
+      albums: updatedAlbums,
+      artists: updatedArtists,
+    );
+
+    scanner.updateCachedResult(newResult);
+    ref.read(musicRepositoryProvider).removeSongFromCache(songId);
+    state = AsyncData(newResult);
+  }
+}
+
+final cachedScanProvider = AsyncNotifierProvider<LibraryNotifier, ScanResult>(() {
+  return LibraryNotifier();
 });
 
 /// Alias for cachedScanProvider representing the library state

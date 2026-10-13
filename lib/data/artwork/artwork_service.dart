@@ -434,6 +434,37 @@ class ArtworkService {
       return null;
     }
   }
+
+  /// Deletes cached artwork files (`<id>_large.jpg`, `<id>_notif.jpg`) and in-memory/disk thumb cache entry.
+  static Future<void> deleteCachedArtwork(String songId) async {
+    _thumbMemoryCache.remove('song_$songId');
+    _thumbMemoryCache.remove(songId);
+
+    try {
+      final cache = await _getCacheDir;
+      final fileNames = [
+        'art_large_$songId.jpg',
+        '${songId}_large.jpg',
+        'art_notif_$songId.jpg',
+        '${songId}_notif.jpg',
+        'thumb_song_$songId.jpg',
+        'thumb_$songId.jpg',
+      ];
+
+      for (final name in fileNames) {
+        final f = File('${cache.path}/$name');
+        if (await f.exists()) {
+          try {
+            await f.delete();
+          } catch (e) {
+            debugPrint('[ArtworkService] Could not delete $name: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[ArtworkService] Error deleting cached artwork for $songId: $e');
+    }
+  }
 }
 
 class _SharedThumbWidget extends StatefulWidget {

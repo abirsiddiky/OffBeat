@@ -38,23 +38,48 @@ class MusicScanner {
 
   /// Scans songs from on_audio_query with single-flight deduplication.
   ///
-  /// - If [force] is false and a cached result exists, returns cached immediately.
-  /// - If a scan is already running, returns the identical active [Future].
-  /// - Derive albums & artists in Dart to avoid the buggy `AlbumQuery`/`ArtistQuery` path.
+  /// - If a scan is in flight, returns the same Future when [force] is false;
+  ///   when [force] is true and a scan is running, ignores the tap (returns the running Future).
+  /// - When [force] is false and a cached result exists, returns cached immediately.
+  /// - When [force] is true and nothing is running, ALWAYS bypasses cached list and runs fresh querySongs via AudioQueryGate.
   Future<ScanResult> scan({bool force = false}) {
-    if (!force && _cachedResult != null) {
-      return Future.value(_cachedResult!);
-    }
-
     if (_inFlightScan != null) {
       debugPrint('[MusicScanner] Scan already in progress, returning active Future');
       return _inFlightScan!;
+    }
+
+    if (!force && _cachedResult != null) {
+      return Future.value(_cachedResult!);
     }
 
     final future = _executeScan();
     _inFlightScan = future;
     return future;
   }
+
+  /// Sets or updates the cached scan result in memory.
+  void updateCachedResult(ScanResult result) {
+    _cachedResult = result;
+  }
+
+  /// Removes a song by ID from cache and re-derives albums & artists in Dart.
+  void removeSongFromCache(String songId) {
+    if (_cachedResult == null) return;
+    final updatedSongs = _cachedResult!.songs.where((s) => s.id != songId).toList();
+    final updatedAlbums = deriveAlbums(updatedSongs);
+    final updatedArtists = deriveArtists(updatedSongs);
+    _cachedResult = ScanResult(
+      songs: updatedSongs,
+      albums: updatedAlbums,
+      artists: updatedArtists,
+    );
+  }
+
+  /// Derives albums entirely in Dart by grouping songs by albumId / album name.
+  List<AlbumModel> deriveAlbums(List<SongModel> songs) => _deriveAlbums(songs);
+
+  /// Derives artists entirely in Dart by grouping songs by artist name.
+  List<ArtistModel> deriveArtists(List<SongModel> songs) => _deriveArtists(songs);
 
   Future<ScanResult> _executeScan() async {
     try {

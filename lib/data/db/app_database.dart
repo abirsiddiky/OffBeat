@@ -178,6 +178,14 @@ class AppDatabase extends _$AppDatabase {
       }
     });
   }
+
+  Future<void> deleteSongData(String songId) async {
+    await transaction(() async {
+      await (delete(favorites)..where((t) => t.songId.equals(songId))).go();
+      await (delete(playlistSongs)..where((t) => t.songId.equals(songId))).go();
+      await (delete(recentlyPlayed)..where((t) => t.songId.equals(songId))).go();
+    });
+  }
 }
 
 LazyDatabase _openConnection() {

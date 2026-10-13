@@ -5,7 +5,7 @@ import '../../core/constants.dart';
 import '../../core/crash_logger.dart';
 import '../../core/permission_service.dart';
 import '../../core/theme_provider.dart';
-import '../../data/repository/music_repository.dart';
+import '../../data/scanner/rescan_controller.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -56,16 +56,8 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.refresh_rounded, color: AppColors.slate),
             title: const Text('Rescan Music Library', style: TextStyle(fontWeight: FontWeight.w600)),
             subtitle: const Text('Scan MediaStore for new or updated files', style: TextStyle(color: AppColors.slate)),
-            onTap: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Scanning library...'), duration: Duration(seconds: 1)),
-              );
-              await ref.read(musicRepositoryProvider).rescan();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Library scan complete')),
-                );
-              }
+            onTap: () {
+              ref.read(isRescanningProvider.notifier).triggerRescan(context);
             },
           ),
 

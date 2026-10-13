@@ -453,4 +453,68 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     }
     _syncAudioServiceQueue();
   }
+
+  /// Handles song deletion from device.
+  ///
+  /// If [songId] is currently playing, advances to the next song first (or stops playback
+  /// and hides mini player if it was the only/last song). Removes [songId] from every occurrence
+  /// in the queue without interrupting other playback.
+  Future<void> handleSongDeleted(String songId) async {
+    final wasCurrent = currentSong?.id == songId;
+    final activeQ = currentActiveQueue;
+
+    final remaining = activeQ.where((s) => s.id != songId).toList();
+
+    if (wasCurrent) {
+      if (remaining.isEmpty) {
+        // Only / last song in queue: stop playback and hide mini player
+        _rawQueue.clear();
+        _shuffledQueue.clear();
+        _currentIndex = -1;
+        _syncAudioServiceQueue();
+        await stop();
+        return;
+      }
+
+      // Next song candidate (look ahead from current index, wrap around if needed)
+      int nextIndex = -1;
+      for (var i = _currentIndex + 1; i < activeQ.length; i++) {
+        if (activeQ[i].id != songId) {
+          nextIndex = i;
+          break;
+        }
+      }
+      if (nextIndex == -1) {
+        for (var i = 0; i < _currentIndex; i++) {
+          if (activeQ[i].id != songId) {
+            nextIndex = i;
+            break;
+          }
+        }
+      }
+
+      final nextSong = (nextIndex != -1) ? activeQ[nextIndex] : remaining.first;
+
+      _rawQueue.removeWhere((s) => s.id == songId);
+      _shuffledQueue.removeWhere((s) => s.id == songId);
+
+      final newActive = currentActiveQueue;
+      _currentIndex = newActive.indexWhere((s) => s.id == nextSong.id);
+      if (_currentIndex == -1) _currentIndex = 0;
+
+      _syncAudioServiceQueue();
+      await _loadAndPlayCurrent();
+    } else {
+      // Non-playing song: remove every occurrence without interrupting playback
+      final currentId = currentSong?.id;
+      _rawQueue.removeWhere((s) => s.id == songId);
+      _shuffledQueue.removeWhere((s) => s.id == songId);
+
+      if (currentId != null) {
+        final newIdx = currentActiveQueue.indexWhere((s) => s.id == currentId);
+        _currentIndex = newIdx != -1 ? newIdx : 0;
+      }
+      _syncAudioServiceQueue();
+    }
+  }
 }

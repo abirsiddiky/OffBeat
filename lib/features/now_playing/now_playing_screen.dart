@@ -166,6 +166,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
 
     final currentSong = ref.watch(currentSongProvider);
+    if (currentSong == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onDismiss();
+      });
+      return const Scaffold(backgroundColor: Colors.transparent);
+    }
     final isPlaying = ref.watch(isPlayingProvider);
     final audioController = ref.watch(audioControllerProvider);
 
@@ -173,26 +179,25 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     final isShuffle = ref.watch(isShuffleEnabledProvider);
 
     final favoritesAsync = ref.watch(favoritesProvider);
-    final isFav = currentSong != null &&
-        (favoritesAsync.value?.any((s) => s.id == currentSong.id) ?? false);
+    final isFav =
+        favoritesAsync.value?.any((s) => s.id == currentSong.id) ?? false;
 
     // Large artwork loader
-    if (currentSong != null && currentSong.id != _loadedSongId) {
+    if (currentSong.id != _loadedSongId) {
       _loadedSongId = currentSong.id;
       _loadLargeArtwork(currentSong);
     }
 
     // Audio specs
     final player = audioController.handler.player;
-    final duration = ref.watch(currentDurationProvider).value ??
-        (currentSong?.duration ?? Duration.zero);
+    final duration = ref.watch(currentDurationProvider).value ?? currentSong.duration;
     final audioSpecs = Formatters.buildAudioSpecs(
-      filePath: currentSong?.uri,
+      filePath: currentSong.uri,
       bitrate: player.state.audioBitrate?.round(),
       sampleRate: player.state.audioParams.sampleRate,
       channels: player.state.audioParams.channelCount,
       format: player.state.audioParams.format,
-      fileSize: currentSong?.size,
+      fileSize: currentSong.size,
       duration: duration,
     );
 
@@ -266,7 +271,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         final rawSide = math.min(maxSideByWidth, maxSideByHeight);
                         final side = math.max(0.0, rawSide);
 
-                        if (side <= 0 || currentSong == null) {
+                        if (side <= 0) {
                           return const SizedBox.shrink();
                         }
 
@@ -351,8 +356,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                 ),
 
                 // (c) Staggered Title, Artist, & Chips (fade + 12 dp slide up)
-                if (currentSong != null) ...[
-                  _wrapStagger(
+                _wrapStagger(
                     slideAnim: _titleSlide,
                     fadeAnim: _titleFade,
                     isLowEnd: isLowEnd,
@@ -571,8 +575,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
                   SizedBox(height: gapLarge),
                 ],
-              ],
-            );
+              );
 
             final Widget effectiveContent;
             if (availableHeight < 520) {
@@ -599,8 +602,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
               child: Stack(
                 children: [
                   // Background Waveform
-                  if (currentSong != null)
-                    Consumer(
+                  Consumer(
                       builder: (context, ref, _) {
                         final pos = ref.watch(currentPositionProvider).value ?? Duration.zero;
                         return Positioned.fill(

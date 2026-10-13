@@ -8,6 +8,7 @@ import '../../data/models/album_model.dart';
 import '../../data/models/song_model.dart';
 import '../../data/repository/music_repository.dart';
 import '../../playback/audio_controller.dart';
+import '../../data/scanner/rescan_controller.dart';
 import '../../shared/widgets/album_grid_card.dart';
 import '../../shared/widgets/fade_in_item.dart';
 import '../../shared/widgets/pressable.dart';
@@ -28,6 +29,7 @@ class HomeScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
     final motion = Motion.of(context);
+    final isRescanning = ref.watch(isRescanningProvider);
 
     final scanAsync = ref.watch(cachedScanProvider);
     final allAlbumsAsync = ref.watch(allAlbumsProvider);
@@ -99,20 +101,25 @@ class HomeScreen extends ConsumerWidget {
 
                     // Rescan Icon Button
                     Pressable(
-                      pressedScale: 0.92,
+                      pressedScale: isRescanning ? 1.0 : 0.92,
                       duration: const Duration(milliseconds: 90),
-                      onTap: () async {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Scanning music library...'),
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
-                        await ref.read(musicRepositoryProvider).rescan();
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.refresh_rounded, color: AppColors.slate, size: 24),
+                      onTap: isRescanning
+                          ? null
+                          : () {
+                              ref.read(isRescanningProvider.notifier).triggerRescan(context);
+                            },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: isRescanning
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.slate),
+                                ),
+                              )
+                            : const Icon(Icons.refresh_rounded, color: AppColors.slate, size: 24),
                       ),
                     ),
 
