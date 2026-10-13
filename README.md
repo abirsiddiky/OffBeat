@@ -199,7 +199,7 @@ OffBeat leverages `media_kit` (backed by libmpv), providing out-of-the-box decod
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/OffBeat.git
+   git clone https://github.com/abirsiddiky/OffBeat.git
    cd OffBeat
    ```
 
