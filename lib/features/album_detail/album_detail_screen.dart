@@ -1,300 +1,303 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
-import '../../data/data.dart';
-import '../../playback/playback.dart';
-import '../../shared/widgets/offbeat_artwork.dart';
-import '../../shared/widgets/track_tile.dart';
+import '../../core/constants.dart';
+import '../../data/artwork/artwork_service.dart';
+import '../../data/models/album_model.dart';
+import '../../data/repository/music_repository.dart';
+import '../../playback/audio_controller.dart';
+import '../../shared/widgets/fade_in_item.dart';
+import '../../shared/widgets/pressable.dart';
+import '../../shared/widgets/song_row_tile.dart';
 
 class AlbumDetailScreen extends ConsumerWidget {
-  final String albumId;
+  final AlbumModel album;
+  final VoidCallback onBack;
+  final VoidCallback onSearchTap;
 
-  const AlbumDetailScreen({super.key, required this.albumId});
+  const AlbumDetailScreen({
+    super.key,
+    required this.album,
+    required this.onBack,
+    required this.onSearchTap,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
+    final raisedBg = isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface;
+    final playBtnBg = isDark ? AppColors.white : AppColors.navy;
+    final playBtnTextColor = isDark ? AppColors.navy : AppColors.white;
 
-    final id = int.tryParse(albumId) ?? 0;
-    final allAlbums = ref.watch(albumsProvider).value ?? [];
+    final songs = ref.watch(albumSongsProvider(album.id));
+    final audioController = ref.watch(audioControllerProvider);
+
+    // Fallback if no songs found with exact albumId
     final allSongs = ref.watch(allSongsProvider).value ?? [];
-
-    final album = allAlbums.firstWhere(
-      (a) => a.id == id,
-      orElse: () => Album(
-        id: id,
-        title: 'Album #$albumId',
-        artist: 'Various Artists',
-        numberOfSongs: 0,
-      ),
-    );
-
-    // Get all songs belonging to this album
-    final albumSongs = allSongs.where((s) {
-      if (s.albumId != null && s.albumId == id) return true;
-      return s.album.trim().toLowerCase() == album.title.trim().toLowerCase();
-    }).toList();
+    final effectiveSongs = songs.isNotEmpty
+        ? songs
+        : allSongs.where((s) => s.album.toLowerCase() == album.title.toLowerCase()).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Add all to playlist',
-            icon: const Icon(Icons.playlist_add_rounded),
-            onPressed: () {
-              if (albumSongs.isNotEmpty) {
-                _showAddAlbumToPlaylistDialog(context, ref, albumSongs);
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert_rounded),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 180),
-        children: [
-          // Album Art Header
-          Center(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: AppRadius.rounded32,
-                boxShadow: [
-                  BoxShadow(
-                    color: (isDark ? Colors.black : AppColors.navy).withValues(
-                      alpha: 0.25,
-                    ),
-                    blurRadius: 28,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: OffBeatArtwork(
-                id: album.id,
-                size: 220,
-                borderRadius: AppRadius.rounded32,
-                fallbackIcon: Icons.album_rounded,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Caption: "Album · N songs"
-          Text(
-            'Album • ${albumSongs.isNotEmpty ? albumSongs.length : album.numberOfSongs} songs',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: isDark ? AppColors.lightSlate : AppColors.slate,
-              letterSpacing: 0.5,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-
-          // Large bold album title
-          Text(
-            album.title,
-            style: theme.textTheme.displayMedium?.copyWith(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-
-          // Artist name
-          Text(
-            album.artist,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: isDark ? AppColors.lightSlate : AppColors.slate,
-              fontSize: 16,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-
-          // Play (filled pill) + Shuffle (outlined pill) buttons
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.play_arrow_rounded, size: 26),
-                  label: const Text('Play'),
-                  style: ElevatedButton.styleFrom(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: AppRadius.rounded32,
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () {
-                    if (albumSongs.isNotEmpty) {
-                      ref
-                          .read(playerControllerProvider.notifier)
-                          .playSongs(albumSongs, 0);
-                      context.push('/now-playing');
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.shuffle_rounded, size: 22),
-                  label: const Text('Shuffle'),
-                  style: OutlinedButton.styleFrom(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: AppRadius.rounded32,
-                    ),
-                    side: BorderSide(
-                      color: isDark ? AppColors.white : AppColors.navy,
-                      width: 1.5,
-                    ),
-                    foregroundColor: isDark ? AppColors.white : AppColors.navy,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                  onPressed: () {
-                    if (albumSongs.isNotEmpty) {
-                      final shuffled = List<Song>.from(albumSongs)
-                        ..shuffle(Random());
-                      ref
-                          .read(playerControllerProvider.notifier)
-                          .playSongs(shuffled, 0);
-                      context.push('/now-playing');
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-
-          // Track list header
-          Text(
-            'Tracks',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Track list
-          if (albumSongs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('No tracks indexed for this album.')),
-            )
-          else
-            ...List.generate(albumSongs.length, (i) {
-              final song = albumSongs[i];
-              return TrackTile(
-                song: song,
-                index: i,
-                showArtwork: false,
-                onTap: () {
-                  ref
-                      .read(playerControllerProvider.notifier)
-                      .playSongs(albumSongs, i);
-                },
-              );
-            }),
-        ],
-      ),
-    );
-  }
-
-  void _showAddAlbumToPlaylistDialog(
-    BuildContext context,
-    WidgetRef ref,
-    List<Song> songs,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppRadius.r32),
-        ),
-      ),
-      builder: (ctx) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final playlistsAsync = ref.watch(playlistsProvider);
-
-            return SafeArea(
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          cacheExtent: 250.0,
+          slivers: [
+            // Top Navigation Bar (Back chevron left, Search icon right)
+            SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
+                  horizontal: AppSpacing.screenInset,
+                  vertical: 8,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Add Album to Playlist',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    Pressable(
+                      pressedScale: 0.92,
+                      duration: const Duration(milliseconds: 90),
+                      onTap: onBack,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.chevron_left_rounded,
+                          size: 32,
+                          color: primaryTextColor,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    playlistsAsync.when(
-                      data: (playlists) {
-                        if (playlists.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: Text('No playlists created yet.'),
-                          );
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: playlists.length,
-                          itemBuilder: (context, i) {
-                            final p = playlists[i];
-                            return ListTile(
-                              leading: const Icon(Icons.playlist_play_rounded),
-                              title: Text(p.name),
-                              onTap: () async {
-                                final repo = ref.read(musicRepositoryProvider);
-                                for (final s in songs) {
-                                  await repo.addSongToPlaylist(p.id, s.id);
-                                }
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Added album to ${p.name}'),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        );
-                      },
-                      loading: () => const CircularProgressIndicator(),
-                      error: (_, _) => const Text('Error loading playlists'),
+                    Text(
+                      'Album',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: primaryTextColor,
+                      ),
+                    ),
+                    Pressable(
+                      pressedScale: 0.92,
+                      duration: const Duration(milliseconds: 90),
+                      onTap: onSearchTap,
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.search_rounded,
+                          size: 26,
+                          color: AppColors.slate,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-            );
-          },
-        );
-      },
+            ),
+
+            // Large Hero Artwork (square, rounded corners)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenInset,
+                  vertical: 12,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ArtworkService.getThumbWidget(
+                      id: album.id,
+                      albumId: album.id,
+                      size: 220,
+                      radius: 28,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Album Metadata
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                child: Column(
+                  children: [
+                    Text(
+                      album.title,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: primaryTextColor,
+                        letterSpacing: -0.4,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      album.artist,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.slate,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${album.songCount} tracks',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.slate,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Two Equal Buttons: "Play" & "Shuffle"
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenInset,
+                  vertical: 16,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Pressable(
+                        pressedScale: 0.96,
+                        duration: const Duration(milliseconds: 90),
+                        onTap: () {
+                          if (effectiveSongs.isNotEmpty) {
+                            audioController.playQueue(effectiveSongs, initialIndex: 0);
+                          }
+                        },
+                        child: Container(
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: playBtnBg,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.play_circle_outline_rounded, size: 24, color: playBtnTextColor),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Play',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: playBtnTextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Pressable(
+                        pressedScale: 0.96,
+                        duration: const Duration(milliseconds: 90),
+                        onTap: () {
+                          if (effectiveSongs.isNotEmpty) {
+                            audioController.playQueue(effectiveSongs, initialIndex: 0);
+                            audioController.toggleShuffle();
+                          }
+                        },
+                        child: Container(
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: raisedBg,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.shuffle_rounded, size: 22, color: primaryTextColor),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Shuffle',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: primaryTextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+
+            // Track List with fixed extent (68.0) and FadeInItem
+            if (effectiveSongs.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(AppSpacing.screenInset),
+                  child: Center(
+                    child: Text('No tracks found in this album', style: TextStyle(color: AppColors.slate)),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                sliver: SliverFixedExtentList(
+                  itemExtent: 68.0,
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final track = effectiveSongs[index];
+                      return FadeInItem(
+                        key: ValueKey(track.id),
+                        itemId: track.id,
+                        child: SongRowTile(
+                          song: track,
+                          index: index,
+                          showThumbnail: false,
+                          showHeart: false,
+                          onTap: () {
+                            audioController.playQueue(effectiveSongs, initialIndex: index);
+                          },
+                        ),
+                      );
+                    },
+                    childCount: effectiveSongs.length,
+                  ),
+                ),
+              ),
+
+            // Bottom safe inset for dock
+            const SliverToBoxAdapter(
+              child: SizedBox(height: AppSpacing.totalDockHeight + 20),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

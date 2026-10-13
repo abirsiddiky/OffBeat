@@ -15,45 +15,40 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
-    project.evaluationDependsOn(":app")
+    plugins.withId("com.android.library") {
+        val androidExt = extensions.findByName("android")
+        if (androidExt is com.android.build.gradle.BaseExtension) {
+            androidExt.compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+            if (androidExt.namespace == null) {
+                if (project.name.contains("on_audio_query")) {
+                    androidExt.namespace = "com.lucasjosino.on_audio_query"
+                } else {
+                    androidExt.namespace = "com.offbeat.${project.name.replace('-', '_')}"
+                }
+            }
+        }
+    }
+
+    afterEvaluate {
+        val androidExt = extensions.findByName("android")
+        if (androidExt is com.android.build.gradle.BaseExtension) {
+            androidExt.compileSdkVersion(36)
+        }
+    }
+
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
+    }
 }
 
 subprojects {
-    val configureNamespace = {
-        val extension = extensions.findByName("android")
-        if (extension != null) {
-            val getNamespaceMethod = extension.javaClass.methods.find { it.name == "getNamespace" }
-            val setNamespaceMethod = extension.javaClass.methods.find { it.name == "setNamespace" && it.parameterTypes.size == 1 }
-            if (getNamespaceMethod != null && setNamespaceMethod != null) {
-                val currentNamespace = getNamespaceMethod.invoke(extension) as? String
-                if (currentNamespace.isNullOrEmpty()) {
-                    val fallbackNamespace = if (name == "on_audio_query_android") {
-                        "com.lucasjosino.on_audio_query"
-                    } else {
-                        "com.example.${name.replace('-', '_')}"
-                    }
-                    setNamespaceMethod.invoke(extension, fallbackNamespace)
-                }
-            }
-
-            if (name == "on_audio_query_android") {
-                val compileMethod = extension.javaClass.methods.find {
-                    (it.name == "compileSdkVersion" || it.name == "setCompileSdkVersion" || it.name == "setCompileSdk") &&
-                    it.parameterTypes.size == 1 &&
-                    (it.parameterTypes[0] == java.lang.Integer.TYPE || it.parameterTypes[0] == Integer::class.java)
-                }
-                compileMethod?.invoke(extension, 35)
-            }
-        }
-    }
-    if (state.executed) {
-        configureNamespace()
-    } else {
-        afterEvaluate {
-            configureNamespace()
-        }
-    }
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {

@@ -1,425 +1,456 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/theme/theme_provider.dart';
-import '../../data/data.dart';
-import '../../playback/playback.dart';
-import '../../shared/widgets/album_card.dart';
-import '../../shared/widgets/grant_permission_widget.dart';
-import '../../shared/widgets/offbeat_artwork.dart';
+import '../../core/constants.dart';
+import '../../core/motion.dart';
+import '../../core/theme_provider.dart';
+import '../../data/artwork/artwork_service.dart';
+import '../../data/models/album_model.dart';
+import '../../data/models/song_model.dart';
+import '../../data/repository/music_repository.dart';
+import '../../playback/audio_controller.dart';
+import '../../shared/widgets/album_grid_card.dart';
+import '../../shared/widgets/fade_in_item.dart';
+import '../../shared/widgets/pressable.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  final Function(AlbumModel album) onAlbumSelected;
+  final VoidCallback onOpenNowPlaying;
+
+  const HomeScreen({
+    super.key,
+    required this.onAlbumSelected,
+    required this.onOpenNowPlaying,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
+    final motion = Motion.of(context);
 
-    final hasPermissionAsync = ref.watch(musicPermissionProvider);
-    final hasPermission = hasPermissionAsync.value ?? false;
+    final scanAsync = ref.watch(cachedScanProvider);
+    final allAlbumsAsync = ref.watch(allAlbumsProvider);
+    final recentlyPlayedAsync = ref.watch(recentlyPlayedProvider);
+    final allSongsAsync = ref.watch(allSongsProvider);
+
+    if (scanAsync.isLoading) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                color: isDark ? AppColors.white : AppColors.navy,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Scanning your music library...',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: primaryTextColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.asset(
-                'assets/images/logo_badge.png',
-                width: 34,
-                height: 34,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text('OffBeat'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Rescan Library',
-            icon: const Icon(Icons.sync_rounded),
-            onPressed: () {
-              ref.read(allSongsProvider.notifier).rescan();
-              ref.read(albumsProvider.notifier).rescan();
-              ref.read(artistsProvider.notifier).rescan();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Scanning local library...'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 1),
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          cacheExtent: 250.0,
+          slivers: [
+            // Top App Header
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenInset,
+                  vertical: 16,
                 ),
-              );
-            },
-          ),
-          // Theme toggle button: single tap immediately toggles; long-press opens Preferences bottom sheet
-          IconButton(
-            tooltip: 'Toggle Theme (Long-press for options)',
-            onPressed: () {
-              final currentMode = ref.read(themeModeProvider);
-              if (currentMode == ThemeMode.system) {
-                // If mode is system, switch to the opposite of current effective brightness
-                ref.read(themeModeProvider.notifier).setThemeMode(
-                      isDark ? ThemeMode.light : ThemeMode.dark,
-                    );
-              } else {
-                ref.read(themeModeProvider.notifier).setThemeMode(
-                      currentMode == ThemeMode.dark
-                          ? ThemeMode.light
-                          : ThemeMode.dark,
-                    );
-              }
-            },
-            onLongPress: () {
-              _showSettingsModal(context, ref);
-            },
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, animation) {
-                return RotationTransition(
-                  turns: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
-                  child: FadeTransition(
-                    opacity: animation,
-                    child: child,
-                  ),
-                );
-              },
-              child: Icon(
-                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                key: ValueKey<bool>(isDark),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: !hasPermission
-          ? GrantPermissionWidget(
-              onGrantPermission: () =>
-                  ref.read(musicPermissionProvider.notifier).request(),
-              onOpenSettings: () =>
-                  ref.read(permissionServiceProvider).openSettings(),
-            )
-          : RefreshIndicator(
-              onRefresh: () async {
-                await ref.read(allSongsProvider.notifier).rescan();
-                await ref.read(albumsProvider.notifier).rescan();
-                await ref.read(artistsProvider.notifier).rescan();
-              },
-              child: ListView(
-                // Bottom padding accounts for mini player + floating nav bar + safe area (~180)
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 180),
-                children: [
-                  Text(
-                    'Welcome Back',
-                    style: theme.textTheme.displayMedium?.copyWith(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
+                child: Row(
+                  children: [
+                    // Logo + App Name
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: Image.asset(
+                        'assets/images/logo_icon.png',
+                        width: 38,
+                        height: 38,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Pure sound, zero noise.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 15,
+                    const SizedBox(width: 12),
+                    Text(
+                      'OffBeat',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: primaryTextColor,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 28),
 
-                  // Horizontal "Recently Played" section
-                  _RecentlyPlayedSection(),
+                    const Spacer(),
 
-                  const SizedBox(height: 32),
+                    // Rescan Icon Button
+                    Pressable(
+                      pressedScale: 0.92,
+                      duration: const Duration(milliseconds: 90),
+                      onTap: () async {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Scanning music library...'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                        await ref.read(musicRepositoryProvider).rescan();
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.refresh_rounded, color: AppColors.slate, size: 24),
+                      ),
+                    ),
 
-                  // Quick-access album grid
-                  _AlbumsSection(),
-                ],
-              ),
-            ),
-    );
-  }
-
-  void _showSettingsModal(BuildContext context, WidgetRef ref) {
-    final currentTheme = ref.read(themeModeProvider);
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.r32)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Preferences',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  leading: const Icon(Icons.brightness_auto_rounded),
-                  title: const Text('System Theme'),
-                  trailing: currentTheme == ThemeMode.system
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppRadius.rounded16,
-                  ),
-                  onTap: () {
-                    ref
-                        .read(themeModeProvider.notifier)
-                        .setThemeMode(ThemeMode.system);
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.dark_mode_rounded),
-                  title: const Text('Dark Navy (#171C26)'),
-                  trailing: currentTheme == ThemeMode.dark
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppRadius.rounded16,
-                  ),
-                  onTap: () {
-                    ref
-                        .read(themeModeProvider.notifier)
-                        .setThemeMode(ThemeMode.dark);
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.light_mode_rounded),
-                  title: const Text('Light Clean (#FFFFFF)'),
-                  trailing: currentTheme == ThemeMode.light
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppRadius.rounded16,
-                  ),
-                  onTap: () {
-                    ref
-                        .read(themeModeProvider.notifier)
-                        .setThemeMode(ThemeMode.light);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _RecentlyPlayedSection extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final recentAsync = ref.watch(recentlyPlayedProvider);
-    final textScaler = MediaQuery.textScalerOf(context);
-
-    return recentAsync.when(
-      data: (songs) {
-        if (songs.isEmpty) return const SizedBox.shrink();
-
-        // Calculate card height dynamically based on artwork (110) + padding (20) + text heights
-        final titleH = textScaler.scale(18.0);
-        final subtitleH = textScaler.scale(16.0);
-        final listHeight = 110.0 + 20.0 + 8.0 + titleH + 2.0 + subtitleH + 12.0;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recently Played',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  '${songs.length} tracks',
-                  style: theme.textTheme.labelSmall,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: listHeight,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: songs.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 14),
-                itemBuilder: (context, i) {
-                  final song = songs[i];
-                  return GestureDetector(
-                    onTap: () {
-                      ref
-                          .read(playerControllerProvider.notifier)
-                          .playSongs(songs, i);
-                    },
-                    child: Container(
-                      width: 130,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.navyElevated
-                            : AppColors.lightCard,
-                        borderRadius: AppRadius.rounded24,
-                        border: Border.all(
-                          color: isDark
-                              ? const Color(0x1FFFFFFF)
-                              : const Color(0x14171C26),
-                          width: 1,
+                    // Theme Toggle with 180° rotation + fade (250 ms)
+                    Pressable(
+                      pressedScale: 0.92,
+                      duration: const Duration(milliseconds: 90),
+                      onTap: () {
+                        ref.read(themeModeProvider.notifier).toggleTheme(context);
+                      },
+                      onLongPress: () {
+                        _showThemeSelectionSheet(context, ref);
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        margin: const EdgeInsets.only(left: 4),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: AnimatedSwitcher(
+                            duration: motion.normal,
+                            transitionBuilder: (child, anim) {
+                              final rotation = Tween<double>(begin: 0.5, end: 0.0).animate(
+                                CurvedAnimation(parent: anim, curve: Motion.enter),
+                              );
+                              return RotationTransition(
+                                turns: rotation,
+                                child: FadeTransition(opacity: anim, child: child),
+                              );
+                            },
+                            child: Icon(
+                              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                              key: ValueKey(isDark),
+                              size: 20,
+                              color: primaryTextColor,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AspectRatio(
-                            aspectRatio: 1.0,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                return OffBeatArtwork(
-                                  id: song.id,
-                                  size: constraints.maxWidth,
-                                  borderRadius: AppRadius.rounded16,
-                                );
-                              },
-                            ),
+                    ),
+
+                    // Settings Icon
+                    Pressable(
+                      pressedScale: 0.92,
+                      duration: const Duration(milliseconds: 90),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        );
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.settings_outlined, color: AppColors.slate, size: 24),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Section: Recently Played
+            SliverToBoxAdapter(
+              child: recentlyPlayedAsync.when(
+                data: (recentSongs) {
+                  final displaySongs = recentSongs.isNotEmpty
+                      ? recentSongs
+                      : (allSongsAsync.value?.take(6).toList() ?? []);
+
+                  if (displaySongs.isEmpty) return const SizedBox.shrink();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.screenInset,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          'Recently Played',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                            color: primaryTextColor,
+                            letterSpacing: -0.3,
                           ),
-                          const SizedBox(height: 8),
-                          Flexible(
-                            child: Text(
-                              song.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(
+                        height: 180,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          physics: const ClampingScrollPhysics(),
+                          cacheExtent: 250.0,
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                          itemCount: displaySongs.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 14),
+                          itemBuilder: (context, idx) {
+                            final song = displaySongs[idx];
+                            return FadeInItem(
+                              key: ValueKey(song.id),
+                              itemId: song.id,
+                              child: _RecentlyPlayedCard(
+                                song: song,
+                                onTap: () {
+                                  ref.read(audioControllerProvider).playSong(song);
+                                },
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Flexible(
-                            child: Text(
-                              song.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontSize: 11,
-                                color: isDark
-                                    ? AppColors.lightSlate
-                                    : AppColors.slate,
-                              ),
-                            ),
-                          ),
-                        ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+            ),
+
+            // Section: Albums Header
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.screenInset,
+                  right: AppSpacing.screenInset,
+                  top: 10,
+                  bottom: 14,
+                ),
+                child: Text(
+                  'Albums',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: primaryTextColor,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ),
+
+            // Section: Albums Grid
+            allAlbumsAsync.when(
+              data: (albums) {
+                if (albums.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(AppSpacing.screenInset),
+                      child: Center(
+                        child: Text('No albums found', style: TextStyle(color: AppColors.slate)),
                       ),
                     ),
                   );
-                },
+                }
+
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 18,
+                      crossAxisSpacing: 18,
+                      mainAxisExtent: 224,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final album = albums[index];
+                        return FadeInItem(
+                          key: ValueKey(album.id),
+                          itemId: album.id,
+                          child: AlbumGridCard(
+                            album: album,
+                            onTap: () => onAlbumSelected(album),
+                          ),
+                        );
+                      },
+                      childCount: albums.length,
+                    ),
+                  ),
+                );
+              },
+              loading: () => const SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+              ),
+              error: (err, _) => SliverToBoxAdapter(
+                child: Center(child: Text('Error loading albums: $err')),
               ),
             ),
+
+            // Bottom safe inset for dock
+            const SliverToBoxAdapter(
+              child: SizedBox(height: AppSpacing.totalDockHeight + 20),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showThemeSelectionSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final currentMode = ref.watch(themeModeProvider);
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          padding: EdgeInsets.only(
+            top: 20,
+            bottom: MediaQuery.of(context).padding.bottom + 20,
+            left: 20,
+            right: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Choose Appearance',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.brightness_auto_rounded),
+                title: const Text('System Default'),
+                trailing: currentMode == ThemeMode.system ? const Icon(Icons.check_rounded) : null,
+                onTap: () {
+                  ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.light_mode_rounded),
+                title: const Text('Light Clean'),
+                trailing: currentMode == ThemeMode.light ? const Icon(Icons.check_rounded) : null,
+                onTap: () {
+                  ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.dark_mode_rounded),
+                title: const Text('Dark Navy'),
+                trailing: currentMode == ThemeMode.dark ? const Icon(Icons.check_rounded) : null,
+                onTap: () {
+                  ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
         );
       },
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
     );
   }
 }
 
-class _AlbumsSection extends ConsumerWidget {
+class _RecentlyPlayedCard extends StatelessWidget {
+  final SongModel song;
+  final VoidCallback onTap;
+
+  const _RecentlyPlayedCard({
+    required this.song,
+    required this.onTap,
+  });
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final albumsAsync = ref.watch(albumsProvider);
-    final textScaler = MediaQuery.textScalerOf(context);
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
 
-    return albumsAsync.when(
-      data: (albums) {
-        if (albums.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text('No albums found on device.'),
-            ),
-          );
-        }
-
-        return Column(
+    return Pressable(
+      pressedScale: 0.96,
+      duration: const Duration(milliseconds: 90),
+      onTap: onTap,
+      child: SizedBox(
+        width: 120,
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Quick-Access Albums',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface,
+              ),
+              child: ArtworkService.getThumbWidget(
+                id: int.tryParse(song.id) ?? (song.albumId ?? 0),
+                songId: song.id,
+                albumId: song.albumId,
+                filePath: song.uri,
+                size: 120,
+                radius: 16,
               ),
             ),
-            const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const crossAxisCount = 2;
-                const crossAxisSpacing = 14.0;
-                final cardWidth =
-                    (constraints.maxWidth - (crossAxisSpacing * (crossAxisCount - 1))) /
-                        crossAxisCount;
-
-                // Extra height: vertical padding (20) + spacing (8) + title line + subtitle line + safety margin
-                final titleH = textScaler.scale(18.0);
-                final subtitleH = textScaler.scale(16.0);
-                final extraHeight = 20.0 + 8.0 + titleH + 2.0 + subtitleH + 12.0;
-                final mainAxisExtent = cardWidth + extraHeight;
-
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: albums.length > 8 ? 8 : albums.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: crossAxisSpacing,
-                    mainAxisSpacing: 14,
-                    mainAxisExtent: mainAxisExtent,
-                  ),
-                  itemBuilder: (context, i) {
-                    final album = albums[i];
-                    return AlbumCard(
-                      album: album,
-                      onTap: () => context.push('/album/${album.id}'),
-                    );
-                  },
-                );
-              },
+            const SizedBox(height: 8),
+            Text(
+              song.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: primaryTextColor,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              song.artist,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w400,
+                color: AppColors.slate,
+              ),
             ),
           ],
-        );
-      },
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: CircularProgressIndicator(),
         ),
-      ),
-      error: (e, _) => Center(
-        child: Text('Error loading albums: $e'),
       ),
     );
   }

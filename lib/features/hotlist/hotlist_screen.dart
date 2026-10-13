@@ -1,183 +1,210 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
-import '../../data/data.dart';
-import '../../playback/playback.dart';
-import '../../shared/widgets/track_tile.dart';
+import '../../core/constants.dart';
+import '../../data/repository/music_repository.dart';
+import '../../playback/audio_controller.dart';
+import '../../shared/widgets/fade_in_item.dart';
+import '../../shared/widgets/pressable.dart';
+import '../../shared/widgets/song_row_tile.dart';
 
 class HotlistScreen extends ConsumerWidget {
   const HotlistScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final hotlistAsync = ref.watch(hotlistProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
+    final playBtnBg = isDark ? AppColors.white : AppColors.navy;
+    final playBtnTextColor = isDark ? AppColors.navy : AppColors.white;
+
+    final favoritesAsync = ref.watch(favoritesProvider);
+    final audioController = ref.watch(audioControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.white : AppColors.navy,
-                borderRadius: AppRadius.rounded16,
-              ),
-              child: Icon(
-                Icons.local_fire_department_rounded,
-                size: 20,
-                color: isDark ? AppColors.navy : AppColors.white,
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          cacheExtent: 250.0,
+          slivers: [
+            // Header
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.screenInset,
+                  right: AppSpacing.screenInset,
+                  top: 20,
+                  bottom: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Hotlist',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: primaryTextColor,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.local_fire_department_rounded,
+                          color: AppColors.red,
+                          size: 28,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Your favorite tracks in one place',
+                      style: TextStyle(fontSize: 14, color: AppColors.slate),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Play All & Shuffle Buttons
+                    favoritesAsync.when(
+                      data: (favs) {
+                        if (favs.isEmpty) return const SizedBox.shrink();
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Pressable(
+                                pressedScale: 0.96,
+                                duration: const Duration(milliseconds: 90),
+                                onTap: () => audioController.playQueue(favs, initialIndex: 0),
+                                child: Container(
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: playBtnBg,
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.play_arrow_rounded, color: playBtnTextColor),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Play All',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: playBtnTextColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Pressable(
+                                pressedScale: 0.96,
+                                duration: const Duration(milliseconds: 90),
+                                onTap: () {
+                                  audioController.playQueue(favs, initialIndex: 0);
+                                  audioController.toggleShuffle();
+                                },
+                                child: Container(
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface,
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.shuffle_rounded, color: primaryTextColor),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Shuffle',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: primaryTextColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, _) => const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 12),
-            const Text('Hotlist'),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+            // Favorites List with fixed extent and FadeInItem
+            favoritesAsync.when(
+              data: (favs) {
+                if (favs.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 60, horizontal: 20),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.favorite_border_rounded, size: 48, color: AppColors.slate),
+                            SizedBox(height: 12),
+                            Text(
+                              'No favorites yet',
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.slate),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Tap the heart icon on any song to add it here',
+                              style: TextStyle(fontSize: 13, color: AppColors.slate),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                  sliver: SliverFixedExtentList(
+                    itemExtent: 68.0,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, idx) {
+                        final song = favs[idx];
+                        return FadeInItem(
+                          key: ValueKey(song.id),
+                          itemId: song.id,
+                          child: SongRowTile(
+                            song: song,
+                            index: idx,
+                            showThumbnail: true,
+                            showHeart: true,
+                            onTap: () => audioController.playQueue(favs, initialIndex: idx),
+                          ),
+                        );
+                      },
+                      childCount: favs.length,
+                    ),
+                  ),
+                );
+              },
+              loading: () => const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator())),
+              error: (e, _) => SliverToBoxAdapter(child: Center(child: Text('Error: $e'))),
+            ),
+
+            const SliverToBoxAdapter(
+              child: SizedBox(height: AppSpacing.totalDockHeight + 20),
+            ),
           ],
         ),
-      ),
-      body: hotlistAsync.when(
-        data: (songs) {
-          if (songs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.navyElevated
-                            : AppColors.lightCard,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark
-                              ? const Color(0x26FFFFFF)
-                              : const Color(0x19171C26),
-                          width: 1,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.local_fire_department_outlined,
-                        size: 44,
-                        color: isDark ? AppColors.lightSlate : AppColors.slate,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Your Hotlist is Empty',
-                      style: theme.textTheme.displayMedium?.copyWith(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Tap the heart icon on any song to add it to your heavy rotation list.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 15,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return ListView(
-            padding: const EdgeInsets.only(top: 8, bottom: 180),
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                        label: const Text('Play Hotlist'),
-                        style: ElevatedButton.styleFrom(
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: AppRadius.rounded32,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: () {
-                          ref
-                              .read(playerControllerProvider.notifier)
-                              .playSongs(songs, 0);
-                          context.push('/now-playing');
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.shuffle_rounded, size: 22),
-                        label: const Text('Shuffle'),
-                        style: OutlinedButton.styleFrom(
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: AppRadius.rounded32,
-                          ),
-                          side: BorderSide(
-                            color: isDark ? AppColors.white : AppColors.navy,
-                            width: 1.5,
-                          ),
-                          foregroundColor:
-                              isDark ? AppColors.white : AppColors.navy,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          textStyle: theme.textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                          ),
-                        ),
-                        onPressed: () {
-                          final shuffled = List<Song>.from(songs)
-                            ..shuffle(Random());
-                          ref
-                              .read(playerControllerProvider.notifier)
-                              .playSongs(shuffled, 0);
-                          context.push('/now-playing');
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: Text(
-                  '${songs.length} Tracks In Heavy Rotation',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              ...List.generate(songs.length, (i) {
-                final song = songs[i];
-                return TrackTile(
-                  song: song,
-                  index: i,
-                  onTap: () {
-                    // Tapping plays the whole hotlist as queue starting at this track
-                    ref
-                        .read(playerControllerProvider.notifier)
-                        .playSongs(songs, i);
-                  },
-                );
-              }),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error loading Hotlist: $e')),
       ),
     );
   }

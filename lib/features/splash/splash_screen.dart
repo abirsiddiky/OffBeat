@@ -1,87 +1,154 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/motion.dart';
+import '../../core/permission_service.dart';
+import '../../data/repository/music_repository.dart';
+import '../../main.dart';
+import '../permission/permission_screen.dart';
 
-class SplashScreen extends StatefulWidget {
+/// Premium animated splash screen for OffBeat.
+///
+/// Features a smooth fade + scale entrance of the OffBeat brand lockup,
+/// an ambient glow on high-end hardware, and seamless transition into
+/// either the main app shell (if permission granted) or PermissionScreen,
+/// triggering the library scan exactly once after permission is confirmed.
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _fadeAnimation;
-  late final Animation<double> _scaleAnimation;
-  Timer? _navigationTimer;
+  late final Animation<double> _fadeAnim;
+  late final Animation<double> _scaleAnim;
+  Timer? _navTimer;
+  bool _navigated = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Dark status bar and navigation bar matching the splash canvas
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF090909),
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-    );
-
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 650),
     );
 
-    _fadeAnimation = CurvedAnimation(
+    _fadeAnim = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+      curve: Curves.easeOutCubic,
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.90, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
+        curve: Curves.easeOutBack,
       ),
     );
 
     _controller.forward();
 
-    // Transition smoothly to /home after 1.4 seconds
-    _navigationTimer = Timer(const Duration(milliseconds: 1400), _proceedToHome);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (Motion.of(context).disableAnimations) {
+          _controller.value = 1.0;
+          _proceedNext();
+          return;
+        }
+      }
+    });
+
+    // Seamless auto-advance after 1.4s
+    _navTimer = Timer(const Duration(milliseconds: 1400), _proceedNext);
   }
 
-  void _proceedToHome() {
+  Future<void> _proceedNext() async {
+    if (_navigated || !mounted) return;
+    _navigated = true;
+
+    final isGranted = await PermissionService.isStorageGranted();
     if (!mounted) return;
-    context.go('/home');
+
+    if (isGranted) {
+      // Storage permission granted -> trigger scan exactly once (single-flight)
+      ref.read(cachedScanProvider.future).ignore();
+
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              const MainShellScaffold(),
+          transitionDuration: const Duration(milliseconds: 350),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+              child: child,
+            );
+          },
+        ),
+      );
+    } else {
+      // Permission not granted -> display PermissionScreen and trigger scan upon grant
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              PermissionScreen(
+            onPermissionGranted: () {
+              ref.read(cachedScanProvider.future).ignore();
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder: (_, _, _) => const MainShellScaffold(),
+                  transitionDuration: const Duration(milliseconds: 300),
+                  transitionsBuilder: (_, anim, _, child) =>
+                      FadeTransition(opacity: anim, child: child),
+                ),
+              );
+            },
+          ),
+          transitionDuration: const Duration(milliseconds: 350),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+              child: child,
+            );
+          },
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
-    _navigationTimer?.cancel();
+    _navTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // #090909 perfectly matches the Android native launch background
-    return Scaffold(
-      backgroundColor: const Color(0xFF090909),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _proceedToHome, // Allow quick skip on user tap
-        child: Center(
+    final isLowEnd = Motion.isLowEnd;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _proceedNext, // Instant tap-to-skip
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: Center(
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
               return Opacity(
-                opacity: _fadeAnimation.value,
+                opacity: _fadeAnim.value,
                 child: Transform.scale(
-                  scale: _scaleAnimation.value,
+                  scale: _scaleAnim.value,
                   child: child,
                 ),
               );
@@ -89,26 +156,35 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // OffBeat Logo (Squircle badge + stylized typography)
-                Image.asset(
-                  'assets/images/splash_logo.png',
-                  width: 230,
-                  height: 230,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                ),
-                const SizedBox(height: 28),
-                // Subtle glowing pulse dot line
-                const SizedBox(
-                  width: 32,
-                  height: 3,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.all(Radius.circular(2)),
-                    child: LinearProgressIndicator(
-                      backgroundColor: Color(0x1FFFFFFF),
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE5E7EB)),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Ambient glow behind emblem
+                    if (!isLowEnd)
+                      Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              blurRadius: 48,
+                              spreadRadius: 8,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // Official OffBeat logo
+                    Image.asset(
+                      'assets/images/logo.png',
+                      width: 240,
+                      height: 240,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),

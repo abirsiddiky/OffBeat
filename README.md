@@ -1,238 +1,265 @@
-# OffBeat
+<div align="center">
 
-<p align="center">
-  <img src="assets/images/splash_logo.png" alt="OffBeat Logo" width="180" style="border-radius: 28px;" />
-</p>
+  <img src="assets/images/logo.png" alt="OffBeat Logo" width="120" height="120" style="border-radius: 28px;" />
 
-<p align="center">
-  <strong>A minimal, local-first music player built with Flutter.</strong><br>
-  Engineered to play every audio format you throw at it with high fidelity, zero telemetry, and an ultra-clean modern aesthetic.
-</p>
+  # OffBeat
+  
+  **A high-performance, production-grade local music player for Android built with Flutter.**
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter" alt="Flutter" />
-  <img src="https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart" alt="Dart" />
-  <img src="https://img.shields.io/badge/Platform-Android-3DDC84?logo=android" alt="Android" />
-  <img src="https://img.shields.io/badge/Audio-libmpv%20%2F%20FFmpeg-FF0000" alt="Audio Engine" />
-  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" />
-</p>
+  [![Flutter](https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white)](https://flutter.dev)
+  [![Dart](https://img.shields.io/badge/Dart-%230175C2.svg?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
+  [![Riverpod](https://img.shields.io/badge/Riverpod-3.4.3-blueviolet?style=for-the-badge)](https://riverpod.dev)
+  [![Drift](https://img.shields.io/badge/Drift%20SQLite-2.35.2-orange?style=for-the-badge)](https://drift.simonbinder.eu)
+  [![media_kit](https://img.shields.io/badge/Audio-media__kit-brightgreen?style=for-the-badge)](https://github.com/media-kit/media-kit)
+  [![Android](https://img.shields.io/badge/Platform-Android%2010+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://android.com)
 
----
+  <p align="center">
+    OffBeat is designed for audiophiles and everyday music lovers who want a blistering-fast, distraction-free offline listening experience. Engineered with hardware-accelerated playback, an adaptive 60 FPS motion engine, and a striking Dark Navy / Clean Light design language.
+  </p>
 
-## ✨ Features
-
-- **Universal Codec Support** — Powered by `media_kit` (libmpv / FFmpeg). Seamlessly decodes MP3, AAC, M4A, FLAC, WAV, OGG/Vorbis, OPUS, ALAC, APE, WMA, and more without external plugins or third-party transcoding.
-- **Real-Time Audio Quality Inspector** — Live inspection of audio stream properties displaying native badges for codec format, sample rate (e.g. `44.1 kHz`), bit depth (`16-bit` / `24-bit`), and bit rate (`320 kbps`).
-- **On-Device Library Scanning** — Automatically indexes all audio files on device storage via Android MediaStore and groups them into Songs, Albums, Artists, and Playlists.
-- **Background Playback & Lock-Screen Controls** — Full integration with Android `AudioService` and media session notifications for background playback, headphone controls, and lock-screen media display.
-- **Queue & Playback Control** — Dynamic queue manipulation (Play Next, Add to Queue, Reorder, Shuffle, Repeat All, Repeat One, Repeat Off).
-- **Dynamic Waveform Seek Bar** — Precision seeking with an interactive thin scrubber, responsive thumb indicator, and decorative background waveform reveal.
-- **Auto-Scrolling Marquee Typography** — Smooth, bidirectional scrolling marquee with soft edge-fade masks for long track names and artist metadata.
-- **Hotlist & Favorites** — Fast one-tap track favoriting persisted locally in SQLite.
-- **Custom Playlists** — Create, rename, delete, and curate custom playlists.
-- **Recently Played History** — Tracks listening history automatically on your device.
-- **Light & Dark Theme Engine** — Instant one-tap switching between Clean Light Mode and Deep Navy Dark Mode, complete with smooth flip-fade animations and system preference synchronization.
-- **Integrated Native & In-App Splash** — Seamless `#090909` dark launch screen transitioning effortlessly into the app.
+</div>
 
 ---
 
-## 🛠 Tech Stack
+## 📑 Table of Contents
 
-| Layer | Library / Tool | Purpose |
-|---|---|---|
-| **Framework** | [Flutter](https://flutter.dev) (Dart 3) | Cross-platform UI toolkit |
-| **Audio Core** | [`media_kit`](https://pub.dev/packages/media_kit) + `media_kit_libs_audio` | High-performance audio engine backed by libmpv & FFmpeg |
-| **Background Playback** | [`audio_service`](https://pub.dev/packages/audio_service) + [`audio_session`](https://pub.dev/packages/audio_session) | Background execution, lock-screen notifications, audio focus |
-| **Media Scanning** | [`on_audio_query_forked`](https://pub.dev/packages/on_audio_query_forked) | Android MediaStore audio indexing and metadata extraction |
-| **Local Persistence** | [`drift`](https://pub.dev/packages/drift) + `sqlite3_flutter_libs` | Reactive, type-safe SQLite database for favorites, playlists, and history |
-| **State Management** | [`flutter_riverpod`](https://pub.dev/packages/flutter_riverpod) | Declarative state management and dependency injection |
-| **Routing** | [`go_router`](https://pub.dev/packages/go_router) | Declarative, URL-driven routing with stateful shell branches |
-| **Typography** | [`google_fonts`](https://pub.dev/packages/google_fonts) | Inter modern sans-serif typography |
-| **Preferences** | [`shared_preferences`](https://pub.dev/packages/shared_preferences) | Local persistence of theme mode and user preferences |
-| **Permissions** | [`permission_handler`](https://pub.dev/packages/permission_handler) | Runtime Android storage & audio permission requests |
-
-**Minimum Android SDK:** API 24 (Android 7.0 Nougat)  
-**Target Android SDK:** API 34+ (Android 14+)
-
----
-
-## 🎨 Design System
-
-OffBeat follows an intentional, distraction-free aesthetic with high contrast, generous tap targets, and smooth micro-animations.
-
-### Color Tokens
-
-| Token | Hex | Usage |
-|---|---|---|
-| **Deep Dark** | `#090909` | Splash screen background, app icon backdrop |
-| **Navy** | `#171C26` | Dark surface, dark cards, light-theme primary text |
-| **Accent / Indigo** | `#4F46E5` | Interactive highlights, active progress slider |
-| **Slate** | `#6C7689` | Secondary text, inactive tab items, timestamps |
-| **Light Slate** | `#A4AAB7` | Borders, subtle dividers, disabled controls |
-| **Clean White** | `#FFFFFF` | Light-theme background, dark-theme primary text |
-
-### Component Styling
-- **Rounded Radii:** Standardized corner scales (`16px`, `24px`, `32px`).
-- **Floating Pill Navigation:** Floating bottom navigation bar with blur/tint docked above system insets.
-- **Docked Mini Player:** Persistent playback bar accessible across all primary tabs with gesture-based progress and transport.
-- **Monochrome & Adaptive Artworks:** Balanced fallback artwork for tracks lacking embedded album art.
+- [✨ Overview](#-overview)
+- [🚀 Key Features](#-key-features)
+  - [🎧 Audiophile-Grade Playback](#-audiophile-grade-playback)
+  - [🎨 Design & Motion Aesthetics](#-design--motion-aesthetics)
+  - [📚 Library & Queue Management](#-library--queue-management)
+  - [⚡ Performance & Low-End Optimization](#-performance--low-end-optimization)
+  - [🛡️ Android System Reliability](#️-android-system-reliability)
+- [🏗️ Architecture & Tech Stack](#️-architecture--tech-stack)
+  - [Technology Stack](#technology-stack)
+  - [Directory Structure](#directory-structure)
+- [📱 Supported Formats & Codecs](#-supported-formats--codecs)
+- [🛠️ Getting Started](#️-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation & Build](#installation--build)
+- [🔐 Permissions & Android Lifecycle](#-permissions--android-lifecycle)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
 ---
 
-## 📱 Screens & Navigation
+## ✨ Overview
+
+Unlike bloated streaming apps or clunky legacy media players, **OffBeat** is built from the ground up for **local-first speed, stability, and elegance**:
+
+- **Hardware Decoding**: Powered by `media_kit` (libmpv backend) for seamless gapless playback, low-latency seeking, and uncompromised audio quality.
+- **Background Native Audio**: Integrated with Android's `MediaBrowserServiceCompat` via `audio_service`, featuring ongoing lockscreen controls, notification actions, and proper audio focus management.
+- **Adaptive 60 FPS Motion**: Built with a dedicated physics and motion design system that dynamically detects hardware capabilities (e.g. low-RAM devices or Android 10/SDK 29) to throttle heavy effects and maintain a consistent 60 frames per second.
+- **Local Persistence**: Powered by SQLite through `Drift`, ensuring rapid instant caching of playlists, favorites, and play history with zero network dependency.
+
+---
+
+## 🚀 Key Features
+
+### 🎧 Audiophile-Grade Playback
+- **Universal Codec Support**: High-performance playback of MP3, FLAC, WAV, AAC, OGG, OPUS, and M4A.
+- **Real-Time Technical Specs**: Inspect active track bitrate (e.g. 320 kbps, 1411 kbps), sample rate (44.1 kHz, 96 kHz, 192 kHz), channel configuration (stereo/surround), and total file size directly in the Now Playing screen.
+- **Audio Focus & Interruption Handling**:
+  - Automatically ducks playback volume to 40% for navigation alerts or notifications.
+  - Automatically pauses on incoming calls and resumes on call termination.
+  - Pauses instantly when wired headphones are unplugged or Bluetooth disconnects (`BECOMING_NOISY`).
+- **Flexible Playback Modes**: Repeat Track, Repeat All, Shuffle, and seamless queue manipulation.
+
+### 🎨 Design & Motion Aesthetics
+- **Curated Theme System**:
+  - **Dark Navy (`#171C26`)**: Deep contrast with card surfaces (`#1E2430`) and active accents.
+  - **Clean White (`#FFFFFF`)**: Fresh, modern daytime mode with high-contrast slate tones.
+  - Smooth 250ms cross-fade theme transitions with rotational toggle micro-interactions.
+- **Floating App Dock & Mini Player**:
+  - Persistent bottom dock housing the interactive 4-tab navigation system.
+  - Floating mini player with progress tracker, play/pause controls, and smooth upward slide-to-expand transition into Now Playing.
+- **Dynamic Now Playing Screen**:
+  - Staggered entrance choreographies (artwork -> title marquee -> seekbar -> playback controls).
+  - Background live audio waveform visualization.
+  - Text Marquee for long song/artist titles (automatically pauses during route transitions to eliminate frame drops).
+  - High-res artwork with dual-tier thumbnail and full-size caching.
+
+### 📚 Library & Queue Management
+- **Single-Flight MediaStore Scanner**:
+  - Scans Android MediaStore safely without blocking the UI thread.
+  - Eliminates notification ringtones and micro-clips shorter than 5 seconds.
+  - In-Dart derivation of albums and artists to prevent vendor-specific MediaStore query bugs.
+- **Library Categories**:
+  - **Songs**: Alphabetical, date-added, and duration indexing.
+  - **Albums**: Grid cards with artwork previews, release year, and track counts.
+  - **Artists**: Discography grouping with album and track aggregation.
+  - **Playlists**: User-created playlists with reordering and bulk track management.
+- **Hotlist**: One-tap access to your favorite and starred tracks with instant "Play All" and "Shuffle" actions.
+- **Up Next Sheet**: Interactive modal sheet allowing drag-and-drop queue reordering, track removal, and instant track skipping.
+- **Quick Actions Menu**: Convenient bottom sheet on every track offering "Play Next", "Add to Queue", "Toggle Favorite", and "Add to Playlist".
+
+### ⚡ Performance & Low-End Optimization
+- **Hardware-Tier Adaptation**: Startup detection via `DeviceInfoPlugin` identifies low-RAM hardware (`ActivityManager.isLowRamDevice` or SDK &le; 29) to automatically scale animation durations (60%) and replace heavy slide transforms with lightweight opacity fades.
+- **Bounded Image Cache**: In-memory decoded image cache capped at 150 items / 60 MB to prevent Garbage Collection (GC) pauses and out-of-memory errors on 2GB–3GB RAM devices.
+- **Jank Logging**: Built-in debug frame timing callback (`WidgetsBinding.instance.addTimingsCallback`) flagging any frame renders exceeding 16.6 ms.
+- **Accessibility Friendly**: Respects Android's system-level *"Remove animations"* setting via `MediaQuery.maybeDisableAnimationsOf(context)`.
+
+### 🛡️ Android System Reliability
+- **Battery Optimization Whitelist Prompt**: Single-tap setting in Diagnostics to request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, ensuring aggressive OEM task killers (MIUI, EMUI, ColorOS, OneUI) do not terminate background playback.
+- **Crash Logger**: In-app crash report viewer and diagnostic exporter with one-click clipboard copying.
+
+---
+
+## 🏗️ Architecture & Tech Stack
+
+OffBeat follows **Feature-First + Layered Architecture** with Riverpod for state management:
 
 ```
-              ┌─────────────────────────────┐
-              │     Splash Screen (/splash) │
-              └──────────────┬──────────────┘
-                             │
-                             ▼
-              ┌─────────────────────────────┐
-              │   Floating Nav Shell Route  │
-              └──────────────┬──────────────┘
-         ┌───────────┬───────┴────────┬───────────┐
-         ▼           ▼                ▼           ▼
-      [Home]      [Search]        [Library]   [Hotlist]
-         │                            │
-         │                            ├─ Songs
-         │                            ├─ Albums ──► [Album Detail (/album/:id)]
-         │                            ├─ Artists
-         │                            └─ Playlists
-         ▼
-[Now Playing Screen (/now-playing)]
+lib/
+├── core/                  # Design tokens, theme, motion curves, permissions & utilities
+│   ├── constants.dart     # Color tokens (Navy, Slate), radii, and spacing
+│   ├── crash_logger.dart  # Unhandled exception persistence and log reader
+│   ├── formatters.dart    # Time duration, audio bitrate/kHz, and file size formatters
+│   ├── motion.dart        # Unified animation durations, curves & low-end adaptation
+│   ├── permission_service.dart # Android 13+ vs <=12 storage & notification permission handler
+│   ├── theme.dart         # Material 3 light/dark ThemeData specifications
+│   └── theme_provider.dart# Riverpod state notifier for Dark/Light/System theme mode
+│
+├── data/                  # Data layer: SQLite DB, scanners, repositories & artwork
+│   ├── artwork/           # Dual-tier thumbnail & high-res artwork loader with caching
+│   ├── audio_query_gate.dart # Concurrency gate for MediaStore queries
+│   ├── db/                # Drift SQLite database (Favorites, Playlists, RecentlyPlayed)
+│   ├── models/            # Immutable data models (Song, Album, Artist, Playlist)
+│   ├── repository/        # MusicRepository coordinating DB, scanner, and streams
+│   └── scanner/           # MusicScanner extracting metadata and deriving relations
+│
+├── features/              # Feature modules (UI screens and view models)
+│   ├── album_detail/      # Album view with track list and artwork header
+│   ├── home/              # Main feed: Recently played carousel, album grid, quick picks
+│   ├── hotlist/           # Starred and favorite tracks with Play All & Shuffle
+│   ├── library/           # 4-tab library (Songs, Albums, Artists, Playlists)
+│   ├── now_playing/       # Full-screen player, Up Next sheet, waveform & specs
+│   ├── permission/        # Storage permission rationale & onboarding screen
+│   ├── playlists/         # Playlist detail and creation dialogs
+│   ├── search/            # Instant debounced search across songs, artists & albums
+│   ├── settings/          # Theme picker, library rescan, battery exemption & crash logs
+│   └── splash/            # Application splash and initialization
+│
+├── playback/              # Audio playback engine
+│   ├── audio_controller.dart # High-level playback actions (play, pause, next, queue)
+│   └── audio_handler.dart    # Background AudioService handler with media_kit backend
+│
+├── shared/widgets/        # Reusable design components
+│   ├── action_menu_sheet.dart# Track contextual action menu
+│   ├── album_grid_card.dart  # Rounded album art card with press animation
+│   ├── app_dock.dart         # Floating dock combining mini player and navigation bar
+│   ├── background_waveform.dart # Procedural animated playback waveform
+│   ├── control_buttons.dart  # Skip, play/pause, seek, and loop controls
+│   ├── marquee_text.dart     # Auto-scrolling text for overflowing track titles
+│   ├── mini_player.dart      # Expandable bottom-dock mini player
+│   ├── nav_bar.dart          # 4-tab floating navigation bar
+│   ├── pressable.dart        # Spring scale feedback on tap
+│   └── song_row_tile.dart    # High-performance virtualized song row item
+│
+└── main.dart              # App bootstrap, Riverpod overrides, GoRouter & lifecycle
 ```
 
-- **Splash Screen (`/splash`)**: Zero-flash launch screen featuring the animated OffBeat squircle badge and subtle progress indicator.
-- **Home Screen (`/home`)**: Quick rescan, theme switch, horizontal Recently Played carousel, and quick-access Album grid.
-- **Search Screen (`/search`)**: Real-time debounce search indexing titles, artists, and albums simultaneously.
-- **Library Screen (`/library`)**: Tabbed overview of Songs, Albums, Artists, and Custom Playlists with sort and filter options.
-- **Album Detail (`/album/:id`)**: Comprehensive album view featuring track listings, total duration, Play All, and Shuffle All.
-- **Now Playing (`/now-playing`)**: Immersive full-screen playback screen equipped with:
-  - High-res artwork with ambient shadow
-  - Marquee track title & artist
-  - Live audio quality badges (Codec, Sample Rate, Bit Depth, Bitrate)
-  - Interactive waveform seek bar
-  - Full transport controls (Shuffle, Prev, Play/Pause, Next, Repeat, Favorite, Queue)
-- **Hotlist (`/hotlist`)**: Instant access to your curated favorite tracks.
+### Technology Stack
+
+| Category | Package / Tool | Version | Purpose |
+|---|---|---|---|
+| **Framework** | Flutter / Dart SDK | `^3.13.5` | Cross-platform core framework |
+| **State Management** | `flutter_riverpod` | `^3.4.3` | Reactive dependency injection & state providers |
+| **Routing** | `go_router` | `^18.0.2` | Declarative URL-like routing with permission guards |
+| **Audio Playback Engine** | `media_kit` + `media_kit_libs_android_audio` | `^1.2.6` / `^1.3.8` | High-fidelity hardware-accelerated audio decoding |
+| **Background Service** | `audio_service` + `audio_session` | `^0.18.19` / `^0.2.4` | Android Foreground Service, lockscreen notifications & audio focus |
+| **Local Database** | `drift` + `sqlite3_flutter_libs` | `^2.35.2` | Type-safe SQLite persistence for favorites, playlists, and history |
+| **MediaStore Queries** | `on_audio_query_forked` | `^2.9.1` | Native Android MediaStore audio indexer |
+| **Tag Extraction** | `audio_metadata_reader` | `^1.8.0` | Fallback ID3/FLAC metadata and embedded cover extraction |
+| **Preferences** | `shared_preferences` | `^2.5.6` | Theme mode & user preference storage |
+| **Typography** | `google_fonts` (Inter) | `^9.0.0` | Modern, clean typographic hierarchy |
+| **Device Info** | `device_info_plus` | `^13.3.0` | Android SDK level & low-RAM detection |
+| **Permissions** | `permission_handler` | `11.3.1` | Storage & notification runtime permission flows |
 
 ---
 
-## 🏗 Project Structure
+## 📱 Supported Formats & Codecs
 
-```
-OffBeat/
-├── android/                         # Native Android configuration, Gradle files & resources
-│   └── app/src/main/
-│       ├── AndroidManifest.xml      # Permissions, services & receiver definitions
-│       └── res/                     # Launcher mipmaps (adaptive & round), drawables & splash styles
-├── assets/
-│   └── images/                      # Official app icons, badges, and splash assets
-├── lib/
-│   ├── core/
-│   │   ├── router/                  # go_router configuration & route hierarchy
-│   │   └── theme/                   # Color palette, themes, radii & ThemeNotifier
-│   ├── data/
-│   │   ├── local/                   # Drift SQLite database & table schemas
-│   │   ├── models/                  # Audio models (Song, Album, Artist, Playlist)
-│   │   ├── providers/               # Riverpod data providers & state notifiers
-│   │   ├── repositories/            # MusicRepository interface & implementation
-│   │   └── services/                # MediaStore music scanner & permission service
-│   ├── features/
-│   │   ├── album_detail/            # Album view with track list & play actions
-│   │   ├── home/                    # Dashboard with recently played & albums grid
-│   │   ├── hotlist/                 # Favorited songs view
-│   │   ├── library/                 # Songs, Albums, Artists & Playlists tabs
-│   │   ├── now_playing/             # Fullscreen player with waveform & audio info
-│   │   ├── search/                  # Instant query filtering
-│   │   └── splash/                  # Animated launch splash screen
-│   ├── playback/
-│   │   ├── audio_handler.dart       # Background AudioService & media_kit bridge
-│   │   └── player_controller.dart   # Playback state provider & controller methods
-│   ├── shared/
-│   │   └── widgets/                 # FloatingNavBar, MiniPlayer, WaveformSeekBar, MarqueeText, etc.
-│   └── main.dart                    # App entry point, background service init & ProviderScope
-├── pubspec.yaml                     # Dependencies and asset declarations
-└── README.md
-```
+OffBeat leverages `media_kit` (backed by libmpv), providing out-of-the-box decoding for:
+
+- **Lossless**: FLAC (`.flac`), ALAC (`.m4a`), WAV (`.wav`), AIFF (`.aiff`)
+- **Lossy**: MP3 (`.mp3`), AAC / M4A (`.aac`, `.m4a`), OGG Vorbis (`.ogg`), Opus (`.opus`), WMA (`.wma`)
+- **Sample Rates**: Standard 44.1 kHz / 48 kHz up to Hi-Res 96 kHz / 192 kHz audio.
 
 ---
 
-## 🔑 Android Permissions
-
-OffBeat is local-first and does **not** require internet access. It requires permissions strictly for reading local media files and running uninterrupted background playback:
-
-| Permission | Android Versions | Justification |
-|---|---|---|
-| `READ_MEDIA_AUDIO` | Android 13+ (API 33+) | Scans audio files from local shared device storage. |
-| `READ_EXTERNAL_STORAGE` | Android 12 and below | Scans music files on older Android devices (`maxSdkVersion 32`). |
-| `FOREGROUND_SERVICE` | All | Keeps playback alive when the app is in the background. |
-| `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | Android 14+ (API 34+) | Declares media playback foreground service compliance. |
-| `POST_NOTIFICATIONS` | Android 13+ (API 33+) | Displays playback notification and lock-screen transport controls. |
-| `WAKE_LOCK` | All | Prevents system CPU sleep from interrupting audio playback. |
-
----
-
-## 🚀 Build Guide
+## 🛠️ Getting Started
 
 ### Prerequisites
-- **Flutter SDK:** `^3.13.5` or higher
-- **Dart SDK:** `^3.0.0`
-- **JDK:** Java 17 or Java 21
-- **Android SDK:** Platform tools & API 34+ installed
+- **Flutter SDK**: `>= 3.13.5` ([Install Flutter](https://docs.flutter.dev/get-started/install))
+- **Android Studio / SDK**: Android SDK 34, Android NDK (required for media_kit audio binaries)
+- **Dart SDK**: Compatible with Flutter 3.13+
 
-### Step-by-Step Instructions
+### Installation & Build
 
-1. **Clone the repository:**
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/abirsiddiky/OffBeat.git
+   git clone https://github.com/your-username/OffBeat.git
    cd OffBeat
    ```
 
-2. **Install Flutter dependencies:**
+2. **Install Flutter dependencies**:
    ```bash
    flutter pub get
    ```
 
-3. **Generate code (Drift database schema):**
+3. **Generate Drift Database Code**:
+   Run `build_runner` to generate `app_database.g.dart`:
    ```bash
    dart run build_runner build --delete-conflicting-outputs
    ```
 
-4. **Run on a connected Android device or emulator:**
+4. **Run the App in Debug Mode**:
+   Connect an Android device (or launch an emulator) and execute:
    ```bash
    flutter run
    ```
 
-5. **Build release APK:**
+5. **Build Release APK**:
    ```bash
    flutter build apk --release
    ```
-   The compiled APK will be located at `build/app/outputs/flutter-apk/app-release.apk`.
+   The APK will be located at `build/app/outputs/flutter-apk/app-release.apk`.
+
+---
+
+## 🔐 Permissions & Android Lifecycle
+
+OffBeat requests only the minimal permissions required to index your offline audio library and play music in the background:
+
+- **`READ_MEDIA_AUDIO`** *(Android 13+ / API 33+)*: Access to audio files stored on the device.
+- **`READ_EXTERNAL_STORAGE`** *(Android 12 and below / API &le; 32)*: Access to local music on older Android versions.
+- **`POST_NOTIFICATIONS`** *(Android 13+ / API 33+)*: Displays playback notification with media controls.
+- **`FOREGROUND_SERVICE` & `FOREGROUND_SERVICE_MEDIA_PLAYBACK`**: Ensures background playback is not killed when the app is minimized.
+- **`WAKE_LOCK`**: Keeps CPU awake during audio decoding with screen turned off.
+- **`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`**: Optional user toggle in Settings to prevent aggressive OEM battery managers from abruptly terminating audio playback.
+
+The app incorporates an automatic permission recovery bridge: if permissions are revoked, the app gracefully navigates to `PermissionScreen` and detects app-resume events via `WidgetsBindingObserver` to re-verify permissions seamlessly.
+
+---
+
+## 🤝 Contributing
+
+Contributions, feature requests, and bug reports are welcome!
+
+1. **Fork the Project**
+2. **Create your Feature Branch** (`git checkout -b feature/AmazingFeature`)
+3. **Commit your Changes** (`git commit -m 'Add some AmazingFeature'`)
+4. **Push to the Branch** (`git push origin feature/AmazingFeature`)
+5. **Open a Pull Request**
 
 ---
 
 ## 📄 License
 
-```text
-MIT License
+Distributed under the **MIT License**. See `LICENSE` for more information.
 
-Copyright (c) 2026 Abir Siddiky
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+<div align="center">
+  <br />
+  <sub>Built with ❤️ using Flutter and Riverpod. Crafted for music enthusiasts.</sub>
+</div>

@@ -1,303 +1,294 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
-import '../../data/data.dart';
-import '../../playback/playback.dart';
-import '../../shared/widgets/album_card.dart';
-import '../../shared/widgets/track_tile.dart';
+import '../../core/constants.dart';
+import '../../data/models/album_model.dart';
+import '../../data/models/song_model.dart';
+import '../../data/repository/music_repository.dart';
+import '../../playback/audio_controller.dart';
+import '../../shared/widgets/album_grid_card.dart';
+import '../../shared/widgets/fade_in_item.dart';
+import '../../shared/widgets/song_row_tile.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  final Function(AlbumModel album) onAlbumSelected;
+
+  const SearchScreen({
+    super.key,
+    required this.onAlbumSelected,
+  });
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
-  final _searchController = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
   Timer? _debounceTimer;
-  String _query = '';
-  String _selectedFilter = 'All'; // 'All', 'Songs', 'Albums', 'Artists'
+  String _searchQuery = '';
 
   @override
   void dispose() {
-    _searchController.dispose();
     _debounceTimer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _onQueryChanged(String value) {
+  void _onQueryChanged(String query) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 250), () {
-      setState(() {
-        _query = value.trim().toLowerCase();
-      });
+      if (mounted) {
+        setState(() {
+          _searchQuery = query.trim().toLowerCase();
+        });
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? AppColors.white : AppColors.navy;
+    final searchBg = isDark ? AppColors.darkRaisedSurface : AppColors.lightRaisedSurface;
 
     final allSongs = ref.watch(allSongsProvider).value ?? [];
-    final allAlbums = ref.watch(albumsProvider).value ?? [];
-    final allArtists = ref.watch(artistsProvider).value ?? [];
+    final allAlbums = ref.watch(allAlbumsProvider).value ?? [];
+    final allArtists = ref.watch(allArtistsProvider).value ?? [];
+    final audioController = ref.watch(audioControllerProvider);
 
-    final filteredSongs = _query.isEmpty
-        ? <Song>[]
+    // Filtered lists
+    final filteredSongs = _searchQuery.isEmpty
+        ? <SongModel>[]
         : allSongs.where((s) {
-            return s.title.toLowerCase().contains(_query) ||
-                s.artist.toLowerCase().contains(_query) ||
-                s.album.toLowerCase().contains(_query);
+            return s.title.toLowerCase().contains(_searchQuery) ||
+                s.artist.toLowerCase().contains(_searchQuery) ||
+                s.album.toLowerCase().contains(_searchQuery);
           }).toList();
 
-    final filteredAlbums = _query.isEmpty
-        ? <Album>[]
+    final filteredAlbums = _searchQuery.isEmpty
+        ? <AlbumModel>[]
         : allAlbums.where((a) {
-            return a.title.toLowerCase().contains(_query) ||
-                a.artist.toLowerCase().contains(_query);
+            return a.title.toLowerCase().contains(_searchQuery) ||
+                a.artist.toLowerCase().contains(_searchQuery);
           }).toList();
 
-    final filteredArtists = _query.isEmpty
-        ? <Artist>[]
-        : allArtists.where((a) {
-            return a.name.toLowerCase().contains(_query);
+    final filteredArtists = _searchQuery.isEmpty
+        ? []
+        : allArtists.where((ar) {
+            return ar.name.toLowerCase().contains(_searchQuery);
           }).toList();
-
-    final hasResults = filteredSongs.isNotEmpty ||
-        filteredAlbums.isNotEmpty ||
-        filteredArtists.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: const Text('Search'),
-      ),
-      body: Column(
-        children: [
-          // Search Bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onQueryChanged,
-              decoration: InputDecoration(
-                hintText: 'Search songs, artists, albums...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _query = '';
-                          });
-                        },
-                      )
-                    : null,
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          cacheExtent: 250.0,
+          slivers: [
+            // Search Header: "Search"
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.screenInset,
+                  right: AppSpacing.screenInset,
+                  top: 20,
+                  bottom: 14,
+                ),
+                child: Text(
+                  'Search',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: primaryTextColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
               ),
             ),
-          ),
 
-          // Filter chips row
-          if (_query.isNotEmpty)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: ['All', 'Songs', 'Albums', 'Artists'].map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(filter),
-                      selected: isSelected,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: AppRadius.rounded32,
-                      ),
-                      onSelected: (_) {
-                        setState(() {
-                          _selectedFilter = filter;
-                        });
-                      },
+            // Search Bar Input
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: searchBg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: _controller,
+                    onChanged: _onQueryChanged,
+                    textInputAction: TextInputAction.search,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: primaryTextColor,
                     ),
-                  );
-                }).toList(),
+                    decoration: InputDecoration(
+                      hintText: 'Songs, artists, or albums',
+                      hintStyle: const TextStyle(
+                        color: AppColors.slate,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: AppColors.slate,
+                        size: 24,
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close_rounded, color: AppColors.slate, size: 20),
+                              onPressed: () {
+                                _controller.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
               ),
             ),
 
-          const SizedBox(height: 8),
+            const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
-          // Search results or empty state
-          Expanded(
-            child: _query.isEmpty
-                ? Center(
+            // Empty state before typing
+            if (_searchQuery.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 60),
+                  child: Center(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.travel_explore_rounded,
-                          size: 64,
-                          color: isDark ? AppColors.slate : AppColors.lightSlate,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Search Your Library',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Type track titles, artist names, or albums',
-                          style: theme.textTheme.bodyMedium,
+                        Icon(Icons.search_rounded, size: 48, color: AppColors.slate.withValues(alpha: 0.5)),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Find your favorite music',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.slate),
                         ),
                       ],
                     ),
-                  )
-                : !hasResults
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off_rounded,
-                              size: 56,
-                              color: isDark ? AppColors.slate : AppColors.lightSlate,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No matches found for "$_query"',
-                              style: theme.textTheme.titleMedium,
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.only(bottom: 180),
-                        children: [
-                          // Songs section
-                          if ((_selectedFilter == 'All' ||
-                                  _selectedFilter == 'Songs') &&
-                              filteredSongs.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                              child: Text(
-                                'Songs (${filteredSongs.length})',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            ...List.generate(
-                              filteredSongs.length > 20
-                                  ? 20
-                                  : filteredSongs.length,
-                              (i) {
-                                final song = filteredSongs[i];
-                                return TrackTile(
-                                  song: song,
-                                  onTap: () {
-                                    ref
-                                        .read(playerControllerProvider.notifier)
-                                        .playSongs(filteredSongs, i);
-                                  },
-                                );
-                              },
-                            ),
-                          ],
-
-                          // Albums section
-                          if ((_selectedFilter == 'All' ||
-                                  _selectedFilter == 'Albums') &&
-                              filteredAlbums.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                              child: Text(
-                                'Albums (${filteredAlbums.length})',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              height: 180,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                itemCount: filteredAlbums.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 14),
-                                itemBuilder: (context, i) {
-                                  final album = filteredAlbums[i];
-                                  return AlbumCard(
-                                    album: album,
-                                    width: 140,
-                                    onTap: () =>
-                                        context.push('/album/${album.id}'),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-
-                          // Artists section
-                          if ((_selectedFilter == 'All' ||
-                                  _selectedFilter == 'Artists') &&
-                              filteredArtists.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                              child: Text(
-                                'Artists (${filteredArtists.length})',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            ...List.generate(filteredArtists.length, (i) {
-                              final artist = filteredArtists[i];
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 4,
-                                ),
-                                leading: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: isDark
-                                        ? AppColors.navyElevated
-                                        : AppColors.lightCard,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.person_rounded),
-                                ),
-                                title: Text(artist.name),
-                                subtitle: Text(
-                                  '${artist.numberOfTracks ?? 0} tracks',
-                                ),
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: AppRadius.rounded16,
-                                ),
-                                onTap: () {
-                                  // Filters to this artist
-                                  setState(() {
-                                    _searchController.text = artist.name;
-                                    _query = artist.name.toLowerCase();
-                                    _selectedFilter = 'Songs';
-                                  });
-                                },
-                              );
-                            }),
-                          ],
-                        ],
+                  ),
+                ),
+              )
+            else if (filteredSongs.isEmpty && filteredAlbums.isEmpty && filteredArtists.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(
+                    child: Text(
+                      'No results found',
+                      style: TextStyle(fontSize: 16, color: AppColors.slate),
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              // Songs section
+              if (filteredSongs.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: AppSpacing.screenInset,
+                      right: AppSpacing.screenInset,
+                      bottom: 8,
+                    ),
+                    child: Text(
+                      'SONGS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                        color: AppColors.slate.withValues(alpha: 0.8),
                       ),
-          ),
-        ],
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                  sliver: SliverFixedExtentList(
+                    itemExtent: 68.0,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, idx) {
+                        final song = filteredSongs[idx];
+                        return FadeInItem(
+                          key: ValueKey(song.id),
+                          itemId: song.id,
+                          child: SongRowTile(
+                            song: song,
+                            index: idx,
+                            showThumbnail: true,
+                            showHeart: true,
+                            onTap: () => audioController.playSong(song),
+                          ),
+                        );
+                      },
+                      childCount: filteredSongs.length,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              ],
+
+              // Albums section
+              if (filteredAlbums.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: AppSpacing.screenInset,
+                      right: AppSpacing.screenInset,
+                      bottom: 8,
+                    ),
+                    child: Text(
+                      'ALBUMS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                        color: AppColors.slate.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenInset),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 18,
+                      crossAxisSpacing: 18,
+                      mainAxisExtent: 224,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, idx) {
+                        final album = filteredAlbums[idx];
+                        return FadeInItem(
+                          key: ValueKey(album.id),
+                          itemId: album.id,
+                          child: AlbumGridCard(
+                            album: album,
+                            onTap: () => widget.onAlbumSelected(album),
+                          ),
+                        );
+                      },
+                      childCount: filteredAlbums.length,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              ],
+            ],
+
+            // Bottom safe inset for dock
+            const SliverToBoxAdapter(
+              child: SizedBox(height: AppSpacing.totalDockHeight + 20),
+            ),
+          ],
+        ),
       ),
     );
   }

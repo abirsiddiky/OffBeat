@@ -1,20 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../core/motion.dart';
 
-/// Reusable auto-scrolling marquee text widget with soft fade edges.
-/// Scrolls left-to-right/loop only when [text] exceeds available width.
 class MarqueeText extends StatefulWidget {
   final String text;
-  final TextStyle? style;
-  final Duration pauseDuration;
+  final TextStyle style;
+  final TextAlign textAlign;
+  final double pauseDurationSeconds;
   final double scrollSpeed; // pixels per second
 
   const MarqueeText({
     super.key,
     required this.text,
-    this.style,
-    this.pauseDuration = const Duration(milliseconds: 1500),
-    this.scrollSpeed = 32.0,
+    required this.style,
+    this.textAlign = TextAlign.center,
+    this.pauseDurationSeconds = 1.5,
+    this.scrollSpeed = 35.0,
   });
 
   @override
@@ -23,153 +24,127 @@ class MarqueeText extends StatefulWidget {
 
 class _MarqueeTextState extends State<MarqueeText> {
   final ScrollController _scrollController = ScrollController();
-  bool _isScrolling = false;
-  bool _disposed = false;
+  Timer? _loopTimer;
+  bool _isOverflowing = false;
+  bool _tickerActive = true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndStartScroll());
+    Motion.isNowPlayingTransitioning.addListener(_onTransitionChanged);
+  }
+
+  void _onTransitionChanged() {
+    if (Motion.isNowPlayingTransitioning.value) {
+      _stopLoop();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflowAndStart());
+    }
   }
 
   @override
-  void didUpdateWidget(covariant MarqueeText oldWidget) {
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isTickerActive = TickerMode.valuesOf(context).enabled;
+    if (isTickerActive != _tickerActive) {
+      _tickerActive = isTickerActive;
+      if (!_tickerActive) {
+        _stopLoop();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflowAndStart());
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(MarqueeText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.text != widget.text) {
-      _stopScroll();
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(0.0);
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndStartScroll());
+      _stopLoop();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflowAndStart());
     }
   }
 
   @override
   void dispose() {
-    _disposed = true;
-    _stopScroll();
+    Motion.isNowPlayingTransitioning.removeListener(_onTransitionChanged);
+    _stopLoop();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _stopScroll() {
-    _isScrolling = false;
+  void _stopLoop() {
+    _loopTimer?.cancel();
+    _loopTimer = null;
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
   }
 
-  Future<void> _checkAndStartScroll() async {
-    if (_disposed || !mounted || _isScrolling) return;
-    if (!_scrollController.hasClients) return;
-
+  void _checkOverflowAndStart() {
+    if (!mounted || !_scrollController.hasClients || !_tickerActive || Motion.isNowPlayingTransitioning.value) return;
     final maxScroll = _scrollController.position.maxScrollExtent;
-    if (maxScroll <= 0) return;
-
-    _isScrolling = true;
-
-    while (mounted && !_disposed && _isScrolling) {
-      // 1. Initial pause at start
-      await Future.delayed(widget.pauseDuration);
-      if (!mounted || _disposed || !_isScrolling) break;
-      if (!_scrollController.hasClients) break;
-
-      final currentMax = _scrollController.position.maxScrollExtent;
-      if (currentMax <= 0) break;
-
-      // 2. Animate to end at constant speed
-      final scrollDuration = Duration(
-        milliseconds: ((currentMax / widget.scrollSpeed) * 1000).round(),
-      );
-
-      try {
-        await _scrollController.animateTo(
-          currentMax,
-          duration: scrollDuration,
-          curve: Curves.linear,
-        );
-      } catch (_) {
-        break;
+    if (maxScroll > 1.0) {
+      if (!_isOverflowing) {
+        setState(() => _isOverflowing = true);
       }
-
-      if (!mounted || _disposed || !_isScrolling) break;
-
-      // 3. Pause at end
-      await Future.delayed(widget.pauseDuration);
-      if (!mounted || _disposed || !_isScrolling) break;
-      if (!_scrollController.hasClients) break;
-
-      // 4. Smoothly scroll back to start (or jump back)
-      try {
-        await _scrollController.animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOut,
-        );
-      } catch (_) {
-        break;
+      _startLoop(maxScroll);
+    } else {
+      if (_isOverflowing) {
+        setState(() => _isOverflowing = false);
       }
     }
+  }
 
-    _isScrolling = false;
+  void _startLoop(double maxScroll) {
+    if (!_tickerActive || Motion.isNowPlayingTransitioning.value) return;
+    _loopTimer?.cancel();
+    _loopTimer = Timer(Duration(milliseconds: (widget.pauseDurationSeconds * 1000).toInt()), () async {
+      if (!mounted || !_scrollController.hasClients || !_tickerActive || Motion.isNowPlayingTransitioning.value) return;
+
+      final distance = maxScroll;
+      final durationMs = (distance / widget.scrollSpeed * 1000).toInt();
+
+      try {
+        await _scrollController.animateTo(
+          maxScroll,
+          duration: Duration(milliseconds: durationMs),
+          curve: Curves.linear,
+        );
+
+        if (!mounted || !_scrollController.hasClients || !_tickerActive || Motion.isNowPlayingTransitioning.value) return;
+        await Future.delayed(Duration(milliseconds: (widget.pauseDurationSeconds * 1000).toInt()));
+
+        if (!mounted || !_scrollController.hasClients || !_tickerActive || Motion.isNowPlayingTransitioning.value) return;
+        await _scrollController.animateTo(
+          0.0,
+          duration: Duration(milliseconds: (durationMs * 0.7).toInt()),
+          curve: Curves.linear,
+        );
+
+        if (!mounted || !_scrollController.hasClients || !_tickerActive || Motion.isNowPlayingTransitioning.value) return;
+        _startLoop(maxScroll);
+      } catch (e) {
+        // Safe catch on cancel/scroll dispose
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final textStyle = widget.style ?? DefaultTextStyle.of(context).style;
-        final textPainter = TextPainter(
-          text: TextSpan(text: widget.text, style: textStyle),
-          maxLines: 1,
-          textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
-        )..layout();
-
-        final textWidth = textPainter.width;
-        final availableWidth = constraints.maxWidth;
-
-        // If text fits in available container, display static text
-        if (textWidth <= availableWidth) {
-          return Text(
-            widget.text,
-            style: widget.style,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          );
-        }
-
-        // Needs marquee scrolling with soft edge fade
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_isScrolling) {
-            _checkAndStartScroll();
-          }
-        });
-
-        return ShaderMask(
-          shaderCallback: (Rect bounds) {
-            return const LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                Colors.transparent,
-                Colors.black,
-                Colors.black,
-                Colors.transparent,
-              ],
-              stops: [0.0, 0.03, 0.97, 1.0],
-            ).createShader(bounds);
-          },
-          blendMode: BlendMode.dstIn,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            scrollDirection: Axis.horizontal,
-            physics: const NeverScrollableScrollPhysics(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-              child: Text(
-                widget.text,
-                style: widget.style,
-                maxLines: 1,
-                softWrap: false,
-              ),
+        return SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Text(
+              widget.text,
+              style: widget.style,
+              textAlign: widget.textAlign,
+              maxLines: 1,
             ),
           ),
         );
