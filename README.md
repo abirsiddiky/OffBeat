@@ -102,6 +102,7 @@ Unlike bloated streaming apps or clunky legacy media players, **OffBeat** is bui
 ### 🛡️ Android System Reliability
 - **Battery Optimization Whitelist Prompt**: Single-tap setting in Diagnostics to request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, ensuring aggressive OEM task killers (MIUI, EMUI, ColorOS, OneUI) do not terminate background playback.
 - **Crash Logger**: In-app crash report viewer and diagnostic exporter with one-click clipboard copying.
+- **Older Android Notification Advisory**: Notification-related issues may occur on older Android versions (such as Android 10, 11, and 12); using a wireless headset is advised with those devices.
 
 ---
 
@@ -240,6 +241,10 @@ OffBeat requests only the minimal permissions required to index your offline aud
 - **`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`**: Optional user toggle in Settings to prevent aggressive OEM battery managers from abruptly terminating audio playback.
 
 The app incorporates an automatic permission recovery bridge: if permissions are revoked, the app gracefully navigates to `PermissionScreen` and detects app-resume events via `WidgetsBindingObserver` to re-verify permissions seamlessly.
+
+> [!NOTE]
+> **Notification Notice for Older Android Versions:**  
+> Notification-related issues may occur on older Android versions (such as Android 10, 11, and 12). It is advised to use a wireless headset with those devices for seamless playback and media control.
 
 ---
 
