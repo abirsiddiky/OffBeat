@@ -229,7 +229,10 @@ class HomeScreen extends ConsumerWidget {
                               child: _RecentlyPlayedCard(
                                 song: song,
                                 onTap: () {
-                                  ref.read(audioControllerProvider).playSong(song);
+                                  ref.read(audioControllerProvider).playQueue(
+                                        displaySongs,
+                                        initialIndex: idx,
+                                      );
                                 },
                               ),
                             );

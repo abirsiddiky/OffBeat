@@ -112,5 +112,11 @@ void main() {
       expect(scanner.cachedResult!.albums.length, 1);
       expect(scanner.cachedResult!.artists.length, 1);
     });
+
+    test('deriveAlbums and deriveArtists return empty list when songs is empty', () {
+      final scanner = MusicScanner();
+      expect(scanner.deriveAlbums([]), isEmpty);
+      expect(scanner.deriveArtists([]), isEmpty);
+    });
   });
 }

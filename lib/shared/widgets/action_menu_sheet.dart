@@ -8,6 +8,7 @@ import '../../data/artwork/artwork_service.dart';
 import '../../data/models/song_model.dart';
 import '../../data/native_media_service.dart';
 import '../../data/repository/music_repository.dart';
+import '../../main.dart';
 import '../../playback/audio_controller.dart';
 
 class ActionMenuSheet extends ConsumerWidget {
@@ -147,7 +148,7 @@ class ActionMenuSheet extends ConsumerWidget {
             iconColor: AppColors.red,
             onTap: () {
               Navigator.pop(context);
-              _confirmAndDelete(context, ref, song);
+              _confirmAndDelete(rootNavigatorKey.currentContext ?? context, ref, song);
             },
           ),
         ],
@@ -330,8 +331,6 @@ class ActionMenuSheet extends ConsumerWidget {
       filePath: song.uri,
     );
 
-    if (!context.mounted) return;
-
     if (deleteResult == 'deleted') {
       // 3a. If current song, skip to next first (or stop and hide mini player if only song);
       // remove from queue without interrupting other playback
@@ -349,8 +348,9 @@ class ActionMenuSheet extends ConsumerWidget {
       ref.read(cachedScanProvider.notifier).removeSong(song.id);
 
       // 3e. Finish with SnackBar "Deleted" (no undo)
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      final messengerContext = rootNavigatorKey.currentContext ?? (context.mounted ? context : null);
+      if (messengerContext != null && messengerContext.mounted) {
+        ScaffoldMessenger.of(messengerContext).showSnackBar(
           const SnackBar(
             content: Text('Deleted'),
             duration: Duration(seconds: 2),
@@ -361,8 +361,9 @@ class ActionMenuSheet extends ConsumerWidget {
       // User cancelled system prompt: change nothing, show nothing
     } else {
       // Error: change nothing, show error SnackBar
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      final messengerContext = rootNavigatorKey.currentContext ?? (context.mounted ? context : null);
+      if (messengerContext != null && messengerContext.mounted) {
+        ScaffoldMessenger.of(messengerContext).showSnackBar(
           const SnackBar(content: Text("Couldn't delete the song")),
         );
       }

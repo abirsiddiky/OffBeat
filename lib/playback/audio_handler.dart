@@ -20,7 +20,7 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   AudioServiceRepeatMode _repeatMode = AudioServiceRepeatMode.none;
   AudioServiceShuffleMode _shuffleMode = AudioServiceShuffleMode.none;
 
-  Timer? _debounceTimer;
+  int _loadGeneration = 0;
   Function(String songId)? onTrackChanged;
 
   OffBeatAudioHandler() {
@@ -95,9 +95,12 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   // Real PlaybackState emitter (Section F: Do NOT emit on every position tick)
-  void _broadcastPlaybackState() {
-    final isPlaying = player.state.playing;
-    final isBuffering = player.state.buffering;
+  void _broadcastPlaybackState({
+    bool? overridePlaying,
+    bool? overrideBuffering,
+  }) {
+    final isPlaying = overridePlaying ?? player.state.playing;
+    final isBuffering = overrideBuffering ?? player.state.buffering;
     final isCompleted = player.state.completed;
 
     AudioProcessingState processingState;
@@ -120,8 +123,14 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       ],
       systemActions: const {
         MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
         MediaAction.skipToNext,
         MediaAction.skipToPrevious,
+        MediaAction.play,
+        MediaAction.pause,
+        MediaAction.playPause,
+        MediaAction.stop,
         MediaAction.setRepeatMode,
         MediaAction.setShuffleMode,
       },
@@ -154,14 +163,14 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     }
 
     _syncAudioServiceQueue();
-    _debouncedLoadAndPlayCurrent();
+    _playCurrentTrackImmediately();
   }
 
   Future<void> playSingle(SongModel song) async {
     final idx = _rawQueue.indexWhere((s) => s.id == song.id);
     if (idx != -1) {
       _currentIndex = idx;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     } else {
       await setQueueAndPlay([song], initialIndex: 0);
     }
@@ -172,41 +181,33 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     queue.add(q.map((s) => s.toMediaItem()).toList());
   }
 
-  void _debouncedLoadAndPlayCurrent() {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      _loadAndPlayCurrent();
-    });
+  void _playCurrentTrackImmediately() {
+    _loadAndPlayCurrent();
   }
 
-  // Track change execution (Section F strict order)
+  // Track change execution (Section F strict order with non-blocking artwork resolution)
   Future<void> _loadAndPlayCurrent() async {
     final song = currentSong;
     if (song == null) return;
+    final generation = ++_loadGeneration;
 
-    // (1) Prepare notification artwork with 1.5s timeout (null on timeout)
-    Uri? notifArtUri;
-    try {
-      notifArtUri = await ArtworkService.getNotificationArtworkUri(
-        songId: song.id,
-        filePath: song.uri,
-        albumId: song.albumId,
-      );
-    } catch (e) {
-      debugPrint('[AudioHandler] Artwork prep error: $e');
-    }
+    // Immediately signal active playback state so foreground service & notification update without delay
+    _broadcastPlaybackState(overridePlaying: true, overrideBuffering: true);
 
-    // (2) Emit mediaItem exactly ONCE per track
-    final item = song.toMediaItem(artUri: notifArtUri);
+    // (1) Fast synchronous disk cache check for notification artwork (< 1ms)
+    final cachedArtUri = ArtworkService.getCachedNotificationArtworkUri(songId: song.id);
+
+    // (2) Emit mediaItem immediately with metadata and cached artwork (if ready)
+    final item = song.toMediaItem(artUri: cachedArtUri);
     debugPrint(
-      '[AudioService API ${PermissionService.sdkInt}] Emitting MediaItem: "${item.title}" artUri=$notifArtUri',
+      '[AudioService API ${PermissionService.sdkInt}] Emitting MediaItem: "${item.title}" artUri=$cachedArtUri',
     );
     mediaItem.add(item);
 
     // Notify repository to log recently played
     onTrackChanged?.call(song.id);
 
-    // (3) Open / Play in media_kit
+    // (3) Open / Play in media_kit immediately without waiting for image decoding
     try {
       if (song.uri.startsWith('asset://')) {
         // Mock / Asset song
@@ -224,8 +225,30 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       debugPrint('[AudioHandler] media_kit player open error: $e');
     }
 
-    // (4) Emit playbackState immediately
+    if (generation != _loadGeneration) return;
+
+    // (4) Emit live playbackState
     _broadcastPlaybackState();
+
+    // (5) If artwork was not already cached on disk, generate/fetch in background and update notification once ready
+    if (cachedArtUri == null && !kNoArtworkMode) {
+      _resolveArtworkInBackground(song, generation);
+    }
+  }
+
+  void _resolveArtworkInBackground(SongModel song, int generation) {
+    ArtworkService.getNotificationArtworkUri(
+      songId: song.id,
+      filePath: song.uri,
+      albumId: song.albumId,
+    ).then((uri) {
+      if (uri != null && generation == _loadGeneration && currentSong?.id == song.id) {
+        debugPrint('[AudioHandler] Background artwork resolved for "${song.title}": $uri');
+        mediaItem.add(song.toMediaItem(artUri: uri));
+      }
+    }).catchError((e) {
+      debugPrint('[AudioHandler] Background artwork prep error: $e');
+    });
   }
 
   void _onTrackCompleted() {
@@ -238,15 +261,47 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    debugPrint('[AudioHandler API ${PermissionService.sdkInt}] Media button click received: $button');
+    switch (button) {
+      case MediaButton.media:
+        if (player.state.playing) {
+          await pause();
+        } else {
+          await play();
+        }
+        break;
+      case MediaButton.next:
+        await skipToNext();
+        break;
+      case MediaButton.previous:
+        await skipToPrevious();
+        break;
+    }
+  }
+
+  @override
   Future<void> play() async {
-    await player.play();
-    _broadcastPlaybackState();
+    _broadcastPlaybackState(overridePlaying: true);
+    try {
+      await player.play();
+    } catch (e) {
+      debugPrint('[AudioHandler] player.play error: $e');
+    } finally {
+      _broadcastPlaybackState();
+    }
   }
 
   @override
   Future<void> pause() async {
-    await player.pause();
-    _broadcastPlaybackState();
+    _broadcastPlaybackState(overridePlaying: false);
+    try {
+      await player.pause();
+    } catch (e) {
+      debugPrint('[AudioHandler] player.pause error: $e');
+    } finally {
+      _broadcastPlaybackState();
+    }
   }
 
   @override
@@ -271,10 +326,10 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     if (_currentIndex + 1 < q.length) {
       _currentIndex++;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     } else if (_repeatMode == AudioServiceRepeatMode.all) {
       _currentIndex = 0;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     } else {
       await player.stop();
       _broadcastPlaybackState();
@@ -294,10 +349,10 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     if (_currentIndex - 1 >= 0) {
       _currentIndex--;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     } else if (_repeatMode == AudioServiceRepeatMode.all) {
       _currentIndex = q.length - 1;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     } else {
       seek(Duration.zero);
     }
@@ -308,7 +363,7 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final q = currentActiveQueue;
     if (index >= 0 && index < q.length) {
       _currentIndex = index;
-      _debouncedLoadAndPlayCurrent();
+      _playCurrentTrackImmediately();
     }
   }
 
@@ -404,10 +459,10 @@ class OffBeatAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     if (isRemovingCurrent) {
       if (_currentIndex < q.length) {
-        _debouncedLoadAndPlayCurrent();
+        _playCurrentTrackImmediately();
       } else if (q.isNotEmpty) {
         _currentIndex = 0;
-        _debouncedLoadAndPlayCurrent();
+        _playCurrentTrackImmediately();
       } else {
         stop();
       }

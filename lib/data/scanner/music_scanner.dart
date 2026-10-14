@@ -84,6 +84,13 @@ class MusicScanner {
   Future<ScanResult> _executeScan() async {
     try {
       final songs = await _querySongsSafely();
+
+      // If transient scan returned empty but we previously had loaded songs, preserve them
+      if (songs.isEmpty && _cachedResult != null && _cachedResult!.songs.isNotEmpty) {
+        debugPrint('[MusicScanner] Query returned 0 songs, keeping previous non-empty cached result');
+        return _cachedResult!;
+      }
+
       final albums = _deriveAlbums(songs);
       final artists = _deriveArtists(songs);
 
@@ -102,57 +109,62 @@ class MusicScanner {
     }
   }
 
-  /// Query songs through [AudioQueryGate] with full error handling.
+  /// Query songs through [AudioQueryGate] with retry and error handling.
   Future<List<SongModel>> _querySongsSafely() async {
-    try {
-      final rawSongs = await AudioQueryGate.run(() async {
-        return await _audioQuery.querySongs(
-          sortType: SongSortType.DATE_ADDED,
-          orderType: OrderType.DESC_OR_GREATER,
-          uriType: UriType.EXTERNAL,
-          ignoreCase: true,
-        );
-      });
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) {
+          await Future.delayed(Duration(milliseconds: 350 * attempt));
+        }
 
-      final songs = <SongModel>[];
-      for (final s in rawSongs) {
-        // Exclude sound effects, ringtones, or audio clips shorter than 5 seconds
-        if ((s.duration ?? 0) < 5000) continue;
+        final rawSongs = await AudioQueryGate.run(() async {
+          return await _audioQuery.querySongs(
+            sortType: SongSortType.DATE_ADDED,
+            orderType: OrderType.DESC_OR_GREATER,
+            uriType: UriType.EXTERNAL,
+            ignoreCase: true,
+          );
+        });
 
-        songs.add(
-          SongModel(
-            id: s.id.toString(),
-            title: (s.title.isNotEmpty ? s.title : s.displayNameWOExt).trim(),
-            artist: (s.artist != null && s.artist!.isNotEmpty && s.artist != '<unknown>')
-                ? s.artist!.trim()
-                : 'Unknown Artist',
-            album: (s.album != null && s.album!.isNotEmpty && s.album != '<unknown>')
-                ? s.album!.trim()
-                : 'Unknown Album',
-            albumId: s.albumId,
-            duration: Duration(milliseconds: s.duration ?? 0),
-            uri: s.data,
-            trackNumber: s.track,
-            size: s.size,
-            dateAdded: s.dateAdded,
-          ),
-        );
+        final songs = <SongModel>[];
+        for (final s in rawSongs) {
+          // Exclude sound effects, ringtones, or audio clips shorter than 5 seconds
+          if ((s.duration ?? 0) < 5000) continue;
+
+          songs.add(
+            SongModel(
+              id: s.id.toString(),
+              title: (s.title.isNotEmpty ? s.title : s.displayNameWOExt).trim(),
+              artist: (s.artist != null && s.artist!.isNotEmpty && s.artist != '<unknown>')
+                  ? s.artist!.trim()
+                  : 'Unknown Artist',
+              album: (s.album != null && s.album!.isNotEmpty && s.album != '<unknown>')
+                  ? s.album!.trim()
+                  : 'Unknown Album',
+              albumId: s.albumId,
+              duration: Duration(milliseconds: s.duration ?? 0),
+              uri: s.data,
+              trackNumber: s.track,
+              size: s.size,
+              dateAdded: s.dateAdded,
+            ),
+          );
+        }
+
+        if (songs.isNotEmpty) {
+          return songs;
+        }
+      } catch (e, st) {
+        debugPrint('[MusicScanner] Safe querySongs attempt $attempt failure: $e\n$st');
       }
-
-      if (songs.isNotEmpty) {
-        return songs;
-      }
-    } catch (e, st) {
-      debugPrint('[MusicScanner] Safe querySongs failure: $e\n$st');
     }
 
-    // High-fidelity fallback catalog when device has no music
-    return _mockReferenceSongs;
+    return [];
   }
 
   /// Derives albums entirely in Dart by grouping songs by albumId / album name.
   List<AlbumModel> _deriveAlbums(List<SongModel> songs) {
-    if (songs.isEmpty) return _mockReferenceAlbums;
+    if (songs.isEmpty) return [];
 
     final albumMap = <int, List<SongModel>>{};
     final fallbackTitleIds = <String, int>{};
@@ -208,7 +220,7 @@ class MusicScanner {
 
   /// Derives artists entirely in Dart by grouping songs by artist name.
   List<ArtistModel> _deriveArtists(List<SongModel> songs) {
-    if (songs.isEmpty) return _mockReferenceArtists;
+    if (songs.isEmpty) return [];
 
     final artistMap = <String, List<SongModel>>{};
     for (final song in songs) {
@@ -254,152 +266,4 @@ class MusicScanner {
     final result = await scan(force: force);
     return result.artists;
   }
-
-  // Reference catalog from attached screenshots
-  static const List<SongModel> _mockReferenceSongs = [
-    SongModel(
-      id: 'mock_1',
-      title: 'Insects',
-      artist: 'Mr. Kitty',
-      album: 'Fragments',
-      albumId: 101,
-      duration: Duration(minutes: 3, seconds: 56),
-      uri: 'asset://assets/audio/mock_1.mp3',
-      trackNumber: 1,
-      size: 7550000,
-    ),
-    SongModel(
-      id: 'mock_2',
-      title: 'Heaven',
-      artist: 'Mr. Kitty',
-      album: 'Fragments',
-      albumId: 101,
-      duration: Duration(minutes: 4, seconds: 43),
-      uri: 'asset://assets/audio/mock_2.mp3',
-      trackNumber: 2,
-      size: 9100000,
-    ),
-    SongModel(
-      id: 'mock_3',
-      title: 'Unstable',
-      artist: 'Mr. Kitty',
-      album: 'Fragments',
-      albumId: 101,
-      duration: Duration(minutes: 2, seconds: 52),
-      uri: 'asset://assets/audio/mock_3.mp3',
-      trackNumber: 3,
-      size: 5800000,
-    ),
-    SongModel(
-      id: 'mock_4',
-      title: 'Sacrifice',
-      artist: 'Mr. Kitty',
-      album: 'Fragments',
-      albumId: 101,
-      duration: Duration(minutes: 6, seconds: 54),
-      uri: 'asset://assets/audio/mock_4.mp3',
-      trackNumber: 4,
-      size: 13200000,
-    ),
-    SongModel(
-      id: 'mock_5',
-      title: 'Holy Death',
-      artist: 'Mr. Kitty',
-      album: 'Fragments',
-      albumId: 101,
-      duration: Duration(minutes: 2, seconds: 58),
-      uri: 'asset://assets/audio/mock_5.mp3',
-      trackNumber: 5,
-      size: 6100000,
-    ),
-    SongModel(
-      id: 'mock_6',
-      title: 'Unsayable',
-      artist: 'Brambles',
-      album: 'Charcoal',
-      albumId: 102,
-      duration: Duration(minutes: 2, seconds: 52),
-      uri: 'asset://assets/audio/mock_6.mp3',
-      trackNumber: 1,
-      size: 5800000,
-    ),
-    SongModel(
-      id: 'mock_7',
-      title: 'To Speak Of Solitude',
-      artist: 'Brambles',
-      album: 'Charcoal',
-      albumId: 102,
-      duration: Duration(minutes: 4, seconds: 21),
-      uri: 'asset://assets/audio/mock_7.mp3',
-      trackNumber: 2,
-      size: 8900000,
-    ),
-    SongModel(
-      id: 'mock_8',
-      title: 'In The Androgynous Dark',
-      artist: 'Brambles',
-      album: 'Charcoal',
-      albumId: 102,
-      duration: Duration(minutes: 4, seconds: 43),
-      uri: 'asset://assets/audio/mock_8.mp3',
-      trackNumber: 3,
-      size: 9400000,
-    ),
-    SongModel(
-      id: 'mock_9',
-      title: 'Salt Photographs',
-      artist: 'Brambles',
-      album: 'Charcoal',
-      albumId: 102,
-      duration: Duration(minutes: 6, seconds: 54),
-      uri: 'asset://assets/audio/mock_9.mp3',
-      trackNumber: 4,
-      size: 14000000,
-    ),
-    SongModel(
-      id: 'mock_10',
-      title: 'Pink And Golden Billows',
-      artist: 'Brambles',
-      album: 'Charcoal',
-      albumId: 102,
-      duration: Duration(minutes: 2, seconds: 58),
-      uri: 'asset://assets/audio/mock_10.mp3',
-      trackNumber: 5,
-      size: 6200000,
-    ),
-  ];
-
-  static const List<AlbumModel> _mockReferenceAlbums = [
-    AlbumModel(
-      id: 101,
-      title: 'Fragments',
-      artist: 'Mr. Kitty',
-      songCount: 17,
-      year: 2013,
-      firstSongId: 'mock_1',
-    ),
-    AlbumModel(
-      id: 102,
-      title: 'Charcoal',
-      artist: 'Brambles',
-      songCount: 8,
-      year: 2012,
-      firstSongId: 'mock_6',
-    ),
-  ];
-
-  static const List<ArtistModel> _mockReferenceArtists = [
-    ArtistModel(
-      id: 201,
-      name: 'Mr. Kitty',
-      trackCount: 5,
-      albumCount: 1,
-    ),
-    ArtistModel(
-      id: 202,
-      name: 'Brambles',
-      trackCount: 5,
-      albumCount: 1,
-    ),
-  ];
 }

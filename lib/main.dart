@@ -14,6 +14,7 @@ import 'core/motion.dart';
 import 'core/permission_service.dart';
 import 'core/theme.dart';
 import 'core/theme_provider.dart';
+import 'data/artwork/artwork_service.dart';
 import 'data/db/app_database.dart';
 import 'data/models/album_model.dart';
 import 'data/repository/music_repository.dart';
@@ -71,6 +72,9 @@ Future<void> main() async {
   // Persistent shared preferences
   final prefs = await SharedPreferences.getInstance();
 
+  // Eagerly initialize artwork disk cache directory for zero-latency checks
+  await ArtworkService.init();
+
   // Database, scanner & repository
   final database = AppDatabase();
   final scanner = MusicScanner();
@@ -82,9 +86,11 @@ Future<void> main() async {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.offbeat.offbeat.audio',
       androidNotificationChannelName: 'OffBeat',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      androidNotificationChannelDescription: 'OffBeat music playback controls',
+      androidNotificationOngoing: false,
+      androidStopForegroundOnPause: false,
       androidNotificationIcon: 'drawable/ic_stat_offbeat',
+      notificationColor: Color(0xFF171C26),
       artDownscaleWidth: 256,
       artDownscaleHeight: 256,
     ),

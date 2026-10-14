@@ -27,6 +27,28 @@ class ArtworkService {
     return _cacheDir!;
   }
 
+  /// Eagerly initialize cache directory at app startup so synchronous disk checks
+  /// can run with 0 latency.
+  static Future<void> init() async {
+    _cacheDir ??= await getTemporaryDirectory();
+  }
+
+  /// Synchronously checks if a valid notification artwork file already exists on disk.
+  /// Returns immediately (<1ms) without blocking UI or playback threads.
+  static Uri? getCachedNotificationArtworkUri({required String songId}) {
+    if (kNoArtworkMode || _cacheDir == null) return null;
+    try {
+      final cachedFile = File('${_cacheDir!.path}/art_notif_$songId.jpg');
+      if (cachedFile.existsSync()) {
+        final len = cachedFile.lengthSync();
+        if (len > 500 && len < 150 * 1024) {
+          return Uri.file(cachedFile.path);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static String computeThumbKey({
     int id = 0,
     String? songId,
